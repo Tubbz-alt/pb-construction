@@ -9,7 +9,6 @@ from extrusion.utils import get_grasp_pose, TOOL_NAME, get_disabled_collisions, 
     sample_direction, PrintTrajectory, retrace_supporters, \
     get_supported_orders, prune_dominated, Command, check_command_collision
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
-from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
 
 try:
@@ -232,6 +231,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
 def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                           collisions=True, **kwargs):
+    from pddlstream.language.stream import WildOutput
+    
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs)
     def wild_gen_fn(node1, element):
         for t, in gen_fn(node1, element):

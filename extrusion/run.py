@@ -19,7 +19,6 @@ sys.path.append('pddlstream/')
 
 from extrusion.experiment import Configuration, load_experiment
 from extrusion.motion import compute_motions, display_trajectories
-from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
     USE_FLOOR, get_id_from_element
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
@@ -242,6 +241,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         pr = cProfile.Profile()
         pr.enable()
         if args.algorithm == 'stripstream':
+            from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                        trajectories=trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
