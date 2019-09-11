@@ -252,7 +252,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
-                                                    disable=args.disable, stiffness=args.stiffness)
+                                                    disable=args.disable, stiffness=args.stiffness, log=True)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -284,7 +284,13 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     }
     plan_data.update(data)
     del plan_data['sequence']
-    plan_path = '{}_solution.json'.format(args.problem)
+
+    result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_results')
+    print('result dir: ', result_file_dir)
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+
+    plan_path = os.path.join(result_file_dir, '{}_solution.json'.format(args.problem))
     with open(plan_path, 'w') as f:
         json.dump(plan_data, f, indent=2, sort_keys=True)
 
@@ -382,6 +388,8 @@ def main():
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
+    parser.add_argument('-log', '--log', action='store_true',
+                        help='Enables logging for searching')
     args = parser.parse_args()
     print('Arguments:', args)
     np.set_printoptions(precision=3)

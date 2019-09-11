@@ -4,7 +4,7 @@ import heapq
 import random
 import time
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 
 import numpy as np
 
@@ -282,10 +282,37 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     }
     return plan, data
 
+def export_log_data(extrusion_file_path, log_data, overwrite=True):
+    import os
+    import datetime
+    import json
+
+    with open(extrusion_file_path, 'r') as f:
+        shape_data = json.loads(f.read())
+    
+    if 'model_name' in shape_data:
+        file_name = shape_data['model_name']
+    else:
+        file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
+
+    result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_log')
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+    
+    data = OrderedDict()
+    data['assembly_type'] = 'extrusion'
+    data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
+    data['search_log_data'] = log_data
+
+    plan_path = os.path.join(result_file_dir, '{}_log{}.json'.format(file_name, '_'+data['write_time'] if not overwrite else ''))
+    with open(plan_path, 'w') as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path,
-               heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
+               heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, log=False, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search to reuse
@@ -301,6 +328,16 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
     # TODO: compute the heuristic function once and fix
 
+    if log:
+        log_data = OrderedDict()
+        log_data['search_method'] = 'regression'
+        log_data['heuristic'] = heuristic
+        log_data['search'] = []
+        # log_data['number_assigns'] = 0
+        # log_data['number_backtracks'] = 0
+        # data['solve_time_util_stop'] = time.time() - self.start_time
+        # data['constr_check_time'] = self.constr_check_time
+
     queue = []
     visited = {}
     def add_successors(printed):
@@ -309,6 +346,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             assert 0 <= num_remaining
             bias = heuristic_fn(printed, element)
             priority = (num_remaining, bias, random.random())
+            print('priority: ', priority)
             heapq.heappush(queue, (priority, printed, element))
 
     initial_printed = frozenset(element_bodies)
@@ -353,11 +391,31 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         if command is None:
             continue
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
+
+        if log:
+            cur_data = {}
+            cur_data['iteration'] = num_evaluated
+            cur_data['min_remaining'] = min_remaining
+            cur_data['e_id'] = id_from_element[element]
+            cur_data['time'] = elapsed_time(start_time)
+            cur_data['number_backtracks'] = backtrack
+            cur_data['queue'] = []
+            for candidate in queue:
+                cand_data = {}
+                cand_data['priority'] = candidate[0]
+                cand_data['printed_e_id'] = [id_from_element[e] for e in candidate[1]]
+                cand_data['e_id'] = id_from_element[candidate[2]]
+                cur_data['queue'].append(cand_data)
+            log_data['search'].append(cur_data)
+
         if not next_printed:
             min_remaining = 0
             plan = list(reversed(retrace_plan(visited, next_printed)))
             break
         add_successors(next_printed)
+
+    if log:
+        export_log_data(extrusion_path, log_data)
 
     # TODO: store maximum stiffness violations (for speed purposes)
     sequence = None
