@@ -191,7 +191,7 @@ def visualize_stiffness(problem, element_bodies):
 
 ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
-def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
+def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False, log=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
@@ -252,7 +252,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
-                                                    disable=args.disable, stiffness=args.stiffness, log=True)
+                                                    disable=args.disable, stiffness=args.stiffness, log=log)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -408,9 +408,9 @@ def main():
     if args.problem == 'all':
         for problem in enumerate_problems():
             args.problem = problem
-            plan_extrusion(args, verbose=True, watch=False)
+            plan_extrusion(args, verbose=True, watch=False, log=args.log)
     else:
-        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
+        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True, log=args.log)
 
     # TODO: collisions at the ends of elements?
     # TODO: slow down automatically near endpoints

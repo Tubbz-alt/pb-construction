@@ -204,6 +204,36 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
+def export_log_data(extrusion_file_path, log_data, overwrite=True):
+    import os
+    import datetime
+    import json
+
+    with open(extrusion_file_path, 'r') as f:
+        shape_data = json.loads(f.read())
+    
+    if 'model_name' in shape_data:
+        file_name = shape_data['model_name']
+    else:
+        file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
+
+    result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_log')
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+    
+    data = OrderedDict()
+    data['assembly_type'] = 'extrusion'
+    data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
+    data['search_log_data'] = log_data
+
+    plan_path = os.path.join(result_file_dir, '{}_log{}.json'.format(file_name, '_'+data['write_time'] if not overwrite else ''))
+    with open(plan_path, 'w') as f:
+        # json.dump(data, f, indent=2, sort_keys=True)
+        json.dump(data, f)
+
+##################################################
+
 def progression(robot, obstacles, element_bodies, extrusion_path,
                 heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
 
@@ -282,33 +312,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     }
     return plan, data
 
-def export_log_data(extrusion_file_path, log_data, overwrite=True):
-    import os
-    import datetime
-    import json
-
-    with open(extrusion_file_path, 'r') as f:
-        shape_data = json.loads(f.read())
-    
-    if 'model_name' in shape_data:
-        file_name = shape_data['model_name']
-    else:
-        file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
-
-    result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_log')
-    if not os.path.exists(result_file_dir):
-        os.makedirs(result_file_dir) 
-    
-    data = OrderedDict()
-    data['assembly_type'] = 'extrusion'
-    data['file_name'] = file_name
-    data['write_time'] = str(datetime.datetime.now())
-    data['search_log_data'] = log_data
-
-    plan_path = os.path.join(result_file_dir, '{}_log{}.json'.format(file_name, '_'+data['write_time'] if not overwrite else ''))
-    with open(plan_path, 'w') as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path,
@@ -333,10 +336,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         log_data['search_method'] = 'regression'
         log_data['heuristic'] = heuristic
         log_data['search'] = []
-        # log_data['number_assigns'] = 0
-        # log_data['number_backtracks'] = 0
-        # data['solve_time_util_stop'] = time.time() - self.start_time
-        # data['constr_check_time'] = self.constr_check_time
 
     queue = []
     visited = {}
@@ -346,7 +345,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             assert 0 <= num_remaining
             bias = heuristic_fn(printed, element)
             priority = (num_remaining, bias, random.random())
-            print('priority: ', priority)
             heapq.heappush(queue, (priority, printed, element))
 
     initial_printed = frozenset(element_bodies)
@@ -392,20 +390,21 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             continue
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
 
+        queue_log_cnt = 10
         if log:
             cur_data = {}
             cur_data['iteration'] = num_evaluated
             cur_data['min_remaining'] = min_remaining
             cur_data['e_id'] = id_from_element[element]
-            cur_data['time'] = elapsed_time(start_time)
-            cur_data['number_backtracks'] = backtrack
             cur_data['queue'] = []
+            i = 0
             for candidate in queue:
+                if i > queue_log_cnt: break
                 cand_data = {}
-                cand_data['priority'] = candidate[0]
-                cand_data['printed_e_id'] = [id_from_element[e] for e in candidate[1]]
+                cand_data['prio'] = candidate[0]
                 cand_data['e_id'] = id_from_element[candidate[2]]
                 cur_data['queue'].append(cand_data)
+                i += 1
             log_data['search'].append(cur_data)
 
         if not next_printed:
