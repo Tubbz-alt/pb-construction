@@ -167,6 +167,9 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     # TODO: analyze fixities projections in the xy plane
 
     # Lower is better
+    checker.solve()
+    full_compliance = checker.get_compliance()
+
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
     success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
@@ -186,16 +189,19 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
     reaction_forces = np.array([d[:3] for d in fixities_reaction.values()])
     reaction_moments = np.array([d[3:] for d in fixities_reaction.values()])
-    heuristic = 'fixities_rotation'
+    # stiffness_criteria = 'fixities_rotation'
+    # stiffness_criteria = 'precomputed_compliance'
+    stiffness_criteria = 'compliance'
     scores = {
         # Yijiang was suprised that fixities_translation worked
         'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
         'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
         'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
         'compliance': [-checker.get_compliance()], # negated because higher is better
+        'precomputed_compliance' : [checker.get_compliance() / full_compliance], # smaller the better
         'deformation': [relative_trans, relative_rot],
     }
-    return operation(scores[heuristic])
+    return operation(scores[stiffness_criteria])
     #return relative_trans
     #return max(relative_trans, relative_rot)
     #return relative_trans + relative_rot # arithmetic mean
@@ -227,7 +233,9 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True):
     data['write_time'] = str(datetime.datetime.now())
     data['search_log_data'] = log_data
 
-    plan_path = os.path.join(result_file_dir, '{}_log{}.json'.format(file_name, '_'+data['write_time'] if not overwrite else ''))
+    plan_path = os.path.join(result_file_dir, '{}_log_{}{}.json'.format(file_name, 
+        log_data['search_method'] + '-' + log_data['heuristic'], 
+        '_'+data['write_time'] if not overwrite else ''))
     with open(plan_path, 'w') as f:
         # json.dump(data, f, indent=2, sort_keys=True)
         json.dump(data, f)

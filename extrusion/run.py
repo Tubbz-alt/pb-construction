@@ -13,6 +13,7 @@ import datetime
 import json
 
 from itertools import product
+from collections import OrderedDict
 from multiprocessing import Pool, cpu_count, TimeoutError
 
 sys.path.append('pddlstream/')
@@ -275,6 +276,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 
     plan_data = {
         'problem':  args.problem,
+        'write_time': str(datetime.datetime.now()),
         'algorithm': args.algorithm,
         'heuristic': args.bias,
         'plan_extrusions': not args.disable,
@@ -290,7 +292,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
 
-    plan_path = os.path.join(result_file_dir, '{}_solution.json'.format(args.problem))
+    plan_path = os.path.join(result_file_dir, '{}_solution_{}-{}.json'.format(args.problem, args.algorithm, args.bias))
     with open(plan_path, 'w') as f:
         json.dump(plan_data, f, indent=2, sort_keys=True)
 
