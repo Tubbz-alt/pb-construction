@@ -79,11 +79,20 @@ GREEDY_HEURISTICS = [
     'length',
 ]
 
+STIFFNESS_CRITERIA = [
+    'fixities_translation',
+    'fixities_rotation',
+    'nodal_translation',
+    'compliance',
+    'precomputed_compliance',
+    'deformation',
+]
+
 # TODO: visualize the branching factor
 # TODO: forward stiffness evaluation
 # TODO: relative heuristics
 
-def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
+def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, stiffness_criteria='compliance'):
     # TODO: penalize disconnected
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = set(element_from_id.values())
@@ -93,7 +102,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     stiffness_cache = {}
     if heuristic == 'fixed-stiffness':
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
-                                                         checker=checker) for element in elements})
+                                                         checker=checker, stiffness_criteria=stiffness_criteria) for element in elements})
 
     def fn(printed, element):
         # Queue minimizes the statistic
@@ -116,7 +125,8 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # Most unstable or least unstable first
             # Gets faster with fewer elements
             structure = printed | {element} if forward else printed - {element}
-            return score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
+            return score_stiffness(extrusion_path, element_from_id, structure, checker=checker, stiffness_criteria=stiffness_criteria) 
+            # lower is better
         elif heuristic == 'fixed-stiffness':
             # TODO: invert the sign for regression/progression?
             # TODO: sort FastDownward by the (fixed) action cost
@@ -159,16 +169,12 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
                 heapq.heappush(queue, (cost2, node2))
     return cost_from_node
 
-def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
+def score_stiffness(extrusion_path, element_from_id, elements, checker=None, stiffness_criteria='compliance'):
     if not elements:
         return 0
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)
     # TODO: analyze fixities projections in the xy plane
-
-    # Lower is better
-    checker.solve()
-    full_compliance = checker.get_compliance()
 
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
@@ -189,16 +195,14 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
     reaction_forces = np.array([d[:3] for d in fixities_reaction.values()])
     reaction_moments = np.array([d[3:] for d in fixities_reaction.values()])
-    # stiffness_criteria = 'fixities_rotation'
-    # stiffness_criteria = 'precomputed_compliance'
-    stiffness_criteria = 'compliance'
+    stiffness_criteria = stiffness_criteria
     scores = {
         # Yijiang was suprised that fixities_translation worked
         'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
         'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
         'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
-        'compliance': [-checker.get_compliance()], # negated because higher is better
-        'precomputed_compliance' : [checker.get_compliance() / full_compliance], # smaller the better
+        'compliance': [checker.get_compliance()], # prefer smaller, higher: more import this element is to the structure, should remove later
+        'precomputed_compliance' : [checker.get_compliance()], # smaller the better
         'deformation': [relative_trans, relative_rot],
     }
     return operation(scores[stiffness_criteria])
@@ -231,11 +235,13 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True):
     data['assembly_type'] = 'extrusion'
     data['file_name'] = file_name
     data['write_time'] = str(datetime.datetime.now())
-    data['search_log_data'] = log_data
+    data.update(log_data)
 
+    file_name_tag = log_data['search_method'] + '-' + log_data['heuristic']
+    if log_data['heuristic'] in ['stiffness', 'fixed-stiffness']:
+        file_name_tag += '-' + log_data['stiffness_criteria']
     plan_path = os.path.join(result_file_dir, '{}_log_{}{}.json'.format(file_name, 
-        log_data['search_method'] + '-' + log_data['heuristic'], 
-        '_'+data['write_time'] if not overwrite else ''))
+        file_name_tag,  '_'+data['write_time'] if not overwrite else ''))
     with open(plan_path, 'w') as f:
         # json.dump(data, f, indent=2, sort_keys=True)
         json.dump(data, f)
@@ -243,7 +249,7 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True):
 ##################################################
 
 def progression(robot, obstacles, element_bodies, extrusion_path,
-                heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
+                heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, stiffness_criteria='compliance', **kwargs):
 
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
@@ -253,7 +259,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
+    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True, stiffness_criteria=stiffness_criteria)
 
     queue = []
     visited = {}
@@ -323,7 +329,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path,
-               heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, log=False, **kwargs):
+               heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, 
+               stiffness_criteria='compliance', log=False, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search to reuse
@@ -336,14 +343,15 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
+    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False, stiffness_criteria=stiffness_criteria)
     # TODO: compute the heuristic function once and fix
 
     if log:
         log_data = OrderedDict()
         log_data['search_method'] = 'regression'
         log_data['heuristic'] = heuristic
-        log_data['search'] = []
+        log_data['stiffness_criteria'] = stiffness_criteria
+        log_data['search_log'] = []
 
     queue = []
     visited = {}
@@ -405,15 +413,13 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             cur_data['min_remaining'] = min_remaining
             cur_data['e_id'] = id_from_element[element]
             cur_data['queue'] = []
+            cur_data['queue'].append({'p' : priority, 'id' : id_from_element[element]})
             i = 0
             for candidate in queue:
                 if i > queue_log_cnt: break
-                cand_data = {}
-                cand_data['prio'] = candidate[0]
-                cand_data['e_id'] = id_from_element[candidate[2]]
-                cur_data['queue'].append(cand_data)
+                cur_data['queue'].append({'p' : candidate[0], 'id' : id_from_element[candidate[2]]})
                 i += 1
-            log_data['search'].append(cur_data)
+            log_data['search_log'].append(cur_data)
 
         if not next_printed:
             min_remaining = 0

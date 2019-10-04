@@ -25,7 +25,7 @@ from extrusion.utils import load_world, check_connected, get_connected_structure
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
     draw_model, enumerate_problems, get_extrusion_path, draw_sequence, affine_extrusion
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
+from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS, STIFFNESS_CRITERIA
 
 from pddlstream.utils import get_python_version
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
@@ -192,7 +192,7 @@ def visualize_stiffness(problem, element_bodies):
 
 ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
-def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False, log=False):
+def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
@@ -249,11 +249,13 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                      max_time=args.max_time, collisions=not args.cfree,
-                                                     disable=args.disable, stiffness=args.stiffness)
+                                                     disable=args.disable, stiffness=args.stiffness, 
+                                                     stiffness_criteria=args.stiffness_criteria)
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
-                                                    disable=args.disable, stiffness=args.stiffness, log=log)
+                                                    disable=args.disable, stiffness=args.stiffness, 
+                                                    stiffness_criteria=args.stiffness_criteria, log=args.log)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -372,6 +374,8 @@ def main():
                         help='Which algorithm to use')
     parser.add_argument('-b', '--bias', default='z', choices=GREEDY_HEURISTICS,
                         help='Which heuristic to use')
+    parser.add_argument('-sc', '--stiffness_criteria', default='compliance', choices=STIFFNESS_CRITERIA,
+                        help='Which stiffness criteria to use')
     parser.add_argument('-c', '--cfree', action='store_true',
                         help='Disables collisions with obstacles')
     parser.add_argument('-d', '--disable', action='store_true',
@@ -410,9 +414,9 @@ def main():
     if args.problem == 'all':
         for problem in enumerate_problems():
             args.problem = problem
-            plan_extrusion(args, verbose=True, watch=False, log=args.log)
+            plan_extrusion(args, verbose=True, watch=False)
     else:
-        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True, log=args.log)
+        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
 
     # TODO: collisions at the ends of elements?
     # TODO: slow down automatically near endpoints
