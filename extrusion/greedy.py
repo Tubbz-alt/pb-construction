@@ -351,6 +351,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         log_data['search_method'] = 'regression'
         log_data['heuristic'] = heuristic
         log_data['stiffness_criteria'] = stiffness_criteria
+        log_data['max_time'] = max_time
+        log_data['max_backtrack'] = max_backtrack if abs(max_backtrack) != INF else 'inf'
         log_data['search_log'] = []
 
     queue = []
@@ -406,19 +408,18 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             continue
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
 
-        queue_log_cnt = 10
+        queue_log_cnt = 200
         if log:
             cur_data = {}
-            cur_data['iteration'] = num_evaluated
-            cur_data['min_remaining'] = min_remaining
-            cur_data['e_id'] = id_from_element[element]
+            cur_data['iter'] = num_evaluated
+            cur_data['min_remain'] = min_remaining
+            cur_data['backtrack'] = backtrack if abs(backtrack) != INF else -1
+            cur_data['chosen_id'] = id_from_element[element]
+            cur_data['total_q_len'] = len(queue)
             cur_data['queue'] = []
-            cur_data['queue'].append({'p' : priority, 'id' : id_from_element[element]})
-            i = 0
-            for candidate in queue:
-                if i > queue_log_cnt: break
-                cur_data['queue'].append({'p' : candidate[0], 'id' : id_from_element[candidate[2]]})
-                i += 1
+            cur_data['queue'].append((id_from_element[element], priority))
+            for candidate in heapq.nsmallest(queue_log_cnt, queue):
+                cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
             log_data['search_log'].append(cur_data)
 
         if not next_printed:
