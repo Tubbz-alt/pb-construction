@@ -23,6 +23,7 @@ def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, trajec
     # TODO: more appropriate distance based on displacement/volume
     if trajectories is None:
         return None
+    print('start computing transition motions.')
     start_time = time.time()
     weights = np.array(JOINT_WEIGHTS)
     resolutions = np.divide(0.005*np.ones(weights.shape), weights)
@@ -49,6 +50,7 @@ def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, trajec
         printed_elements.append(print_traj.element)
         all_trajectories.append(print_traj)
     # TODO: return to initial?
+    print('Transition motions all found.')
     return all_trajectories
 
 ##################################################
@@ -94,7 +96,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                 i, str(trajectory), is_connected, is_ground(trajectory.element, ground_nodes), len(trajectory.path)))
             if not is_connected:
                 wait_for_user()
-        connected_nodes.add(trajectory.n2)
+            connected_nodes.add(trajectory.n2)
 
     #user_input('Finish?')
     wait_for_interrupt()

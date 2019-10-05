@@ -271,7 +271,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     disconnect()
 
     id_from_element = get_id_from_element(element_from_id)
-    planned_elements = [traj.element for traj in planned_trajectories]
+    planned_elements = [traj.element for traj in planned_trajectories if hasattr(traj, 'element')]
     planned_ids = [id_from_element[element] for element in planned_elements]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x

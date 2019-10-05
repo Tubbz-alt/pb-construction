@@ -13,17 +13,20 @@ from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, set_j
     get_aabb
 from pddlstream.utils import get_connected_components
 
-KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+# KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion_mit_3-412.urdf'
 TOOL_NAME = 'eef_tcp_frame'
 # [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']
 
 # TODO: import from SRDF
 DISABLED_COLLISIONS = [
-    # ('robot_link_1', 'workspace_objects'),
+    ('robot_base_link', 'workspace_objects'),
+    ('robot_link_1', 'workspace_objects'),
     # ('robot_link_2', 'workspace_objects'),
     # ('robot_link_3', 'workspace_objects'),
     # ('robot_link_4', 'workspace_objects'),
     ('robot_link_5', 'eef_base_link'),
+    ('robot_link_3', 'material_feeder_material_feeder'),
 ]
 CUSTOM_LIMITS = {
     'robot_joint_a1': (-np.pi/2, np.pi/2),
@@ -152,7 +155,7 @@ class MotionTrajectory(object):
             set_joint_positions(self.robot, self.joints, conf)
             yield
     def __repr__(self):
-        return 'm({},{})'.format(len(self.joints), len(self.path))
+        return 'm(#J {},#pth {})'.format(len(self.joints), len(self.path))
 
 class PrintTrajectory(object):
     def __init__(self, robot, joints, path, tool_path, element, is_reverse):
@@ -174,7 +177,7 @@ class PrintTrajectory(object):
             set_joint_positions(self.robot, self.joints, conf)
             yield
     def __repr__(self):
-        return '{}->{}'.format(self.n1, self.n2)
+        return 'n{}->n{}'.format(self.n1, self.n2)
 
 class Command(object):
     def __init__(self, trajectories=[], colliding=set()):
