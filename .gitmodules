@@ -2,5 +2,5 @@
 	path = src/pddlstream
 	url = https://github.com/caelan/pddlstream.git
 [submodule "src/pb-construction/data/assembly_instances"]
-	path = src/pb-construction/data/assembly_instances
+	path = src/pb_construction/data/assembly_instances
 	url = https://github.com/yijiangh/assembly_instances.git
