@@ -7,10 +7,11 @@ import numpy as np
 from examples.pybullet.construction.extrusion.utils import TOOL_NAME, create_elements, get_grasp_pose, sample_direction
 from pybullet_planning import get_movable_joints, get_joint_name, get_sample_fn, \
     set_joint_positions, wait_for_interrupt, link_from_name, inverse_kinematics, get_link_pose, Pose, Euler, Point, \
-    multiply, set_pose, get_pose, invert, draw_pose
+    multiply, set_pose, get_pose, invert, draw_pose, wait_for_user
 from extrusion.utils import doubly_printable, get_node_neighbors, element_supports, get_supported_orders, \
     retrace_supporters
 from extrusion.visualization import draw_element
+
 from pddlstream.algorithms.incremental import solve_exhaustive
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test

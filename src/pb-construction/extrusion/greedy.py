@@ -18,6 +18,7 @@ from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
+
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
 #State = namedtuple('State', ['element', 'printed', 'plan'])

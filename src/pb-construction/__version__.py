@@ -1,4 +1,4 @@
-__title__ = 'pb-construction'
+__title__ = 'pb_construction'
 __description__ = 'sequence and motion planning for robotic spatial extrusion'
 __url__ = 'https://github.com/caelan/pb-construction'
 __version__ = '0.0.1'

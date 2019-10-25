@@ -9,7 +9,6 @@ from pyconmech import StiffnessChecker
 
 from pybullet_planning import set_point, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, get_distance
-from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
 # KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion_mit_3-412.urdf'
@@ -228,6 +227,7 @@ def check_connected(ground_nodes, printed_elements):
     return printed_elements <= visited_elements
 
 def get_connected_structures(elements):
+    from pddlstream.utils import get_connected_components
     edges = {(e1, e2) for e1, neighbors in get_element_neighbors(elements).items()
              for e2 in neighbors}
     return get_connected_components(elements, edges)
@@ -329,3 +329,23 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
 
 def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
     return evaluate_stiffness(extrusion_path, element_from_id, elements, **kwargs).success
+
+##################################################
+# copy from PDDLStream
+# https://github.com/caelan/pddlstream/blob/18b303e19bbab9f8e0016fbb2656f461067e1e94/pddlstream/utils.py
+
+def incoming_from_edges(edges):
+    incoming_vertices = defaultdict(set)
+    for v1, v2 in edges:
+        incoming_vertices[v2].add(v1)
+    return incoming_vertices
+
+def outgoing_from_edges(edges):
+    outgoing_vertices = defaultdict(set)
+    for v1, v2 in edges:
+        outgoing_vertices[v1].add(v2)
+    return outgoing_vertices
+
+def neighbors_from_orders(orders):
+    return incoming_from_edges(orders), \
+           outgoing_from_edges(orders)
