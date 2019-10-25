@@ -8,15 +8,16 @@ from collections import namedtuple, OrderedDict
 
 import numpy as np
 
-from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
+from pybullet_planning import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect
+from pybullet_planning import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
+
 from extrusion.parsing import load_extrusion, draw_element, draw_sequence
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
 State = namedtuple('State', ['element', 'printed', 'plan'])
@@ -84,7 +85,6 @@ STIFFNESS_CRITERIA = [
     'fixities_rotation',
     'nodal_translation',
     'compliance',
-    'precomputed_compliance',
     'deformation',
 ]
 
@@ -103,6 +103,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, stiffness
     if heuristic == 'fixed-stiffness':
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
                                                          checker=checker, stiffness_criteria=stiffness_criteria) for element in elements})
+
 
     def fn(printed, element):
         # Queue minimizes the statistic
@@ -202,7 +203,6 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None, sti
         'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
         'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
         'compliance': [checker.get_compliance()], # prefer smaller, higher: more import this element is to the structure, should remove later
-        'precomputed_compliance' : [checker.get_compliance()], # smaller the better
         'deformation': [relative_trans, relative_rot],
     }
     return operation(scores[stiffness_criteria])
@@ -346,15 +346,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False, stiffness_criteria=stiffness_criteria)
     # TODO: compute the heuristic function once and fix
 
-    if log:
-        log_data = OrderedDict()
-        log_data['search_method'] = 'regression'
-        log_data['heuristic'] = heuristic
-        log_data['stiffness_criteria'] = stiffness_criteria
-        log_data['max_time'] = max_time
-        log_data['max_backtrack'] = max_backtrack if abs(max_backtrack) != INF else 'inf'
-        log_data['search_log'] = []
-
     queue = []
     visited = {}
     def add_successors(printed):
@@ -376,6 +367,25 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
+    if log:
+        log_data = OrderedDict()
+        log_data['search_method'] = 'regression'
+        log_data['heuristic'] = heuristic
+        log_data['stiffness_criteria'] = stiffness_criteria
+        log_data['max_time'] = max_time
+        log_data['max_backtrack'] = max_backtrack if abs(max_backtrack) != INF else 'inf'
+        log_data['total_e_num'] = len(initial_printed)
+        log_data['search_log'] = []
+        if 'fixed' in heuristic:
+            log_data['precomputed_heuristic'] = {'criteria' : stiffness_criteria}
+            cache = {}
+            for e in initial_printed:
+                cache[id_from_element[e]] = heuristic_fn(initial_printed, e)
+                print('E#{} : {} - score {}'.format(id_from_element[e], e, cache[id_from_element[e]]))
+            # sorted_ids = sorted(cache, key=lambda e_id: cache[e_id])
+            # log_data['precomputed_heuristic']['cache'] = OrderedDict({e_id : cache[e_id] for e_id in sorted_ids})
+            log_data['precomputed_heuristic']['cache'] = cache
+    
     # TODO: lazy hill climbing using the true stiffness heuristic
     # Choose the first move that improves the score
     if has_gui():
@@ -411,9 +421,9 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         queue_log_cnt = 200
         if log:
             cur_data = {}
-            cur_data['iter'] = num_evaluated
+            cur_data['iter'] = num_evaluated - 1
             cur_data['min_remain'] = min_remaining
-            cur_data['backtrack'] = backtrack if abs(backtrack) != INF else -1
+            cur_data['backtrack'] = backtrack+1 if abs(backtrack) != INF else 0
             cur_data['chosen_id'] = id_from_element[element]
             cur_data['total_q_len'] = len(queue)
             cur_data['queue'] = []

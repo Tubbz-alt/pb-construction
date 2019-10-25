@@ -4,7 +4,7 @@ import colorsys
 import numpy as np
 
 from collections import namedtuple, OrderedDict
-from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
+from pybullet_planning import add_line, create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, spaced_colors, tform_point, multiply, tform_from_pose, pose_from_tform
 from extrusion.utils import is_ground
 
@@ -184,16 +184,23 @@ def draw_element(node_points, element, color=(1, 0, 0)):
     return add_line(p1, p2, color=color[:3])
 
 
-def draw_model(elements, node_points, ground_nodes):
+def draw_model(elements, node_points, ground_nodes, colors=[]):
     handles = []
-    for element in elements:
-        color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
+    for i, element in enumerate(elements):
+        if colors and len(colors) == len(elements):
+            color = colors[i]
+        else:
+            color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
         handles.append(draw_element(node_points, element, color=color))
     return handles
 
 def draw_sequence(elements, node_points):
-    #colors = spaced_colors(len(elements))
-    colors = [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(0, 0.75, len(elements), endpoint=True)]
+    # colors = spaced_colors(len(elements))
+    # colors = [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(0, 0.75, len(elements), endpoint=True)]
+    # color scheme changed by Yijiang
+    # red  (build last, removed first)
+    # blue (build first, removed last)
+    colors = [(h, 0, 1-h) for h in np.linspace(0, 1, len(elements), endpoint=True)]
     handles = []
     for element, color in zip(elements, colors):
         handles.append(draw_element(node_points, element, color=color))

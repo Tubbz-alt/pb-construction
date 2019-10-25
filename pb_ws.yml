@@ -1,0 +1,14 @@
+name: pb_ws
+
+channels:
+    - conda-forge
+
+dependencies:
+   - python=3.6
+   - pip=19.0.1
+   - numpy
+   - scipy
+   - pip:
+     - pybullet
+     - pybullet_planning
+     - pyconmech

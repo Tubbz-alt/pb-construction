@@ -8,13 +8,13 @@ from collections import defaultdict, deque, namedtuple
 
 from pyconmech import StiffnessChecker
 
-from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, set_joint_positions, \
+from pybullet_planning import set_point, Euler, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, \
     get_aabb
 from pddlstream.utils import get_connected_components
 
-# KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
-KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion_mit_3-412.urdf'
+KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+# KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion_mit_3-412.urdf'
 TOOL_NAME = 'eef_tcp_frame'
 # [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']
 
@@ -280,6 +280,8 @@ def get_connected_structures(elements):
 
 TRANS_TOL = 0.0015
 ROT_TOL = 5 * np.pi / 180
+# TRANS_TOL = 0.005
+# ROT_TOL = 10 * np.pi / 180
 
 def create_stiffness_checker(extrusion_path, verbose=False):
     # TODO: the stiffness checker likely has a memory leak
@@ -290,7 +292,10 @@ def create_stiffness_checker(extrusion_path, verbose=False):
         checker = StiffnessChecker(json_file_path=extrusion_path, verbose=verbose)
     #checker.set_output_json(True)
     #checker.set_output_json_path(file_path=os.getcwd(), file_name="stiffness-results.json")
-    checker.set_self_weight_load(True)
+
+    checker.set_self_weight_load(include_self_weight=True)
+    # checker.set_loads(include_self_weight=True, gravity_direction=[0, 0, -100])
+
     #checker.set_nodal_displacement_tol(transl_tol=0.005, rot_tol=10 * np.pi / 180)
     #checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))

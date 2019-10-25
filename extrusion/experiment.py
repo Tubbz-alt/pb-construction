@@ -6,7 +6,7 @@ from collections import namedtuple, OrderedDict
 from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path
 from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
 from pddlstream.utils import str_from_object, INF
-from examples.pybullet.utils.pybullet_tools.utils import read_pickle
+from pybullet_planning import read_pickle
 
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
                                              'cfree', 'disable', 'stiffness', 'motions'])

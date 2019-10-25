@@ -28,7 +28,11 @@ from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS, STIFFNESS_CRITERIA
 
 from pddlstream.utils import get_python_version
-from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
+# from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
+#     get_joint_positions, LockRenderer, wait_for_user, has_gui, unit_pose, \
+#     add_line, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
+#     get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug
+from pybullet_planning import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui, unit_pose, \
     add_line, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
     get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug

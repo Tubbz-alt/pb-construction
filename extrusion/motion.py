@@ -2,8 +2,8 @@ from __future__ import print_function
 
 import time
 import numpy as np
-
-from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
+# examples.pybullet.utils.pybullet_tools.utils
+from pybullet_planning import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, wait_for_interrupt, point_from_pose, get_link_pose, link_from_name, add_line, \
     wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
 
@@ -68,7 +68,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         disconnect()
         return
 
-    wait_for_interrupt()
+    wait_for_user()
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
@@ -99,6 +99,6 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
             connected_nodes.add(trajectory.n2)
 
     #user_input('Finish?')
-    wait_for_interrupt()
+    wait_for_user()
     reset_simulation()
     disconnect()
