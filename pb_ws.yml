@@ -11,4 +11,5 @@ dependencies:
    - pip:
      - pybullet
      - pybullet_planning
+     - ikfast_pybind
      - pyconmech

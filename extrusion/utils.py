@@ -1,16 +1,14 @@
 from __future__ import print_function
 
 import os
-import random
 import numpy as np
 
 from collections import defaultdict, deque, namedtuple
 
 from pyconmech import StiffnessChecker
 
-from pybullet_planning import set_point, Euler, set_joint_positions, \
-    pairwise_collision, Pose, multiply, Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, \
-    get_aabb
+from pybullet_planning import set_point, set_joint_positions, \
+    Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, get_distance
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -33,58 +31,9 @@ CUSTOM_LIMITS = {
 }
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
-USE_FLOOR = False
+USE_FLOOR = True
 
 ##################################################
-
-def check_command_collision(tool_body, tool_from_root, command, bodies):
-    # TODO: each new addition makes collision checking more expensive
-    #offset = 4
-    #for robot_conf in trajectory[offset:-offset]:
-    collisions = [False for _ in range(len(bodies))]
-
-    # TODO: separate into another method. Sort paths by tool poses first
-    for trajectory in command.trajectories:
-        indices = list(range(len(trajectory.path)))
-        random.shuffle(indices)  # TODO: bisect
-        for k in indices:
-            tool_pose = trajectory.tool_path[k]
-            set_pose(tool_body, multiply(tool_pose, tool_from_root))
-            for i, body in enumerate(bodies):
-                if not collisions[i]:
-                    collisions[i] |= pairwise_collision(tool_body, body)
-        for k in indices:
-            robot_conf = trajectory.path[k]
-            set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
-            for i, body in enumerate(bodies):
-                if not collisions[i]:
-                    collisions[i] |= pairwise_collision(trajectory.robot, body)
-    return collisions
-
-#def get_grasp_rotation(direction, angle):
-    #return Pose(euler=Euler(roll=np.pi / 2, pitch=direction, yaw=angle))
-    #rot = Pose(euler=Euler(roll=np.pi / 2))
-    #thing = (unit_point(), quat_from_vector_angle(direction, angle))
-    #return multiply(thing, rot)
-
-def sample_direction():
-    ##roll = random.uniform(0, np.pi)
-    #roll = np.pi/4
-    #pitch = random.uniform(0, 2*np.pi)
-    #return Pose(euler=Euler(roll=np.pi / 2 + roll, pitch=pitch))
-    roll = random.uniform(-np.pi/2, np.pi/2)
-    pitch = random.uniform(-np.pi/2, np.pi/2)
-    return Pose(euler=Euler(roll=roll, pitch=pitch))
-
-
-def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
-    #direction = Pose(euler=Euler(roll=np.pi / 2, pitch=direction))
-    return multiply(Pose(point=Point(z=offset)),
-                    Pose(euler=Euler(yaw=angle)),
-                    direction,
-                    Pose(point=Point(z=translation)),
-                    Pose(euler=Euler(roll=(1-reverse) * np.pi)))
-
 
 def load_world(use_floor=USE_FLOOR):
     root_directory = os.path.dirname(os.path.abspath(__file__))
@@ -118,6 +67,10 @@ def get_node_neighbors(elements):
         node_neighbors[n1].add(e)
         node_neighbors[n2].add(e)
     return node_neighbors
+
+def nodes_from_elements(elements):
+    # TODO: always include ground nodes
+    return set(get_node_neighbors(elements))
 
 def get_element_neighbors(elements):
     node_neighbors = get_node_neighbors(elements)
@@ -164,11 +117,11 @@ class PrintTrajectory(object):
         self.path = path
         self.tool_path = tool_path
         self.is_reverse = is_reverse
-        assert len(self.path) == len(self.tool_path)
-        self.n1, self.n2 = reversed(element) if self.is_reverse else element
+        #assert len(self.path) == len(self.tool_path)
         self.element = element
-    def direction(self):
-        return self.n1, self.n2
+        self.n1, self.n2 = reversed(element) if self.is_reverse else element
+    def directed_element(self):
+        return (self.n1, self.n2)
     def reverse(self):
         return self.__class__(self.robot, self.joints, self.path[::-1],
                               self.tool_path[::-1], self.element, self.is_reverse)
@@ -207,6 +160,9 @@ def get_other_node(node1, element):
 
 def is_ground(element, ground_nodes):
     return any(n in ground_nodes for n in element)
+
+def compute_element_distance(node_points, elements):
+    return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements)
 
 ##################################################
 
@@ -300,6 +256,7 @@ def create_stiffness_checker(extrusion_path, verbose=False):
     #checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
     checker.set_nodal_displacement_tol(trans_tol=TRANS_TOL, rot_tol=ROT_TOL)
+    #checker.set_loads(point_loads=None, include_self_weight=False, uniform_distributed_load={})
 
     return checker
 
@@ -314,6 +271,14 @@ Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities',
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
 Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
 
+def force_from_reaction(reaction):
+    return reaction[:3]
+
+def torque_from_reaction(reaction):
+    return reaction[3:]
+
+##################################################
+
 def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, verbose=True):
     # TODO: check each component individually
     if not elements:
@@ -323,14 +288,24 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
         checker = create_stiffness_checker(extrusion_path, verbose=False)
     # TODO: load element_from_id
     extruded_ids = get_extructed_ids(element_from_id, elements)
+    #print(checker.get_element_local2global_rot_matrices())
+    #print(checker.get_element_stiffness_matrices(in_local_coordinate=False))
+
+    #nodal_loads = checker.get_nodal_loads(existing_ids=[], dof_flattened=False) # per node
+    #weight_loads = checker.get_self_weight_loads(existing_ids=[], dof_flattened=False) # get_nodal_loads = get_self_weight_loads?
+    #for node in sorted(nodal_load):
+    #    print(node, nodal_loads[node] - weight_loads[node])
 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
     #print("has stored results: {0}".format(checker.has_stored_result()))
     success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
-    assert is_stiff == success
+    assert is_stiff == success # TODO: this sometimes isn't true
     displacements = {i: Displacement(*d) for i, d in nodal_displacement.items()}
     fixities = {i: Reaction(*d) for i, d in fixities_reaction.items()}
     reactions = {i: (Reaction(*d[0]), Reaction(*d[1])) for i, d in element_reaction.items()}
+
+    #translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], axis=1))
+    #rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], axis=1))
 
     #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
     # TODO: investigate if nodal displacement can be used to select an ordering

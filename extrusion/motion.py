@@ -2,14 +2,14 @@ from __future__ import print_function
 
 import time
 import numpy as np
-# examples.pybullet.utils.pybullet_tools.utils
+
 from pybullet_planning import get_movable_joints, set_joint_positions, plan_joint_motion, \
-    connect, wait_for_interrupt, point_from_pose, get_link_pose, link_from_name, add_line, \
-    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
+    connect, point_from_pose, get_link_pose, link_from_name, add_line, \
+    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user, set_camera_pose
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     TOOL_NAME
-from extrusion.parsing import draw_sequence
+from extrusion.visualization import draw_ordered, set_extrusion_camera
 from extrusion.stream import SELF_COLLISIONS
 
 JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
@@ -59,11 +59,12 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     if trajectories is None:
         return
     connect(use_gui=True)
+    set_extrusion_camera(node_points)
     obstacles, robot = load_world()
     movable_joints = get_movable_joints(robot)
     if not animate:
         planned_elements = [traj.element for traj in trajectories]
-        draw_sequence(planned_elements, node_points)
+        draw_ordered(planned_elements, node_points)
         wait_for_user()
         disconnect()
         return
@@ -75,7 +76,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     connected_nodes = set(ground_nodes)
     print('Trajectories:', len(trajectories))
     for i, trajectory in enumerate(trajectories):
-        #wait_for_interrupt()
+        #wait_for_user()
         #set_color(element_bodies[element], (1, 0, 0, 1))
         last_point = None
         handles = []
@@ -88,7 +89,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                     handles.append(add_line(last_point, current_point, color=color))
                 last_point = current_point
             wait_for_duration(time_step)
-        #wait_for_interrupt()
+        #wait_for_user()
 
         if isinstance(trajectory, PrintTrajectory):
             is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
