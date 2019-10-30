@@ -3,13 +3,16 @@ import os
 import numpy as np
 
 from collections import namedtuple, OrderedDict
+
 from pybullet_planning import create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform
+import pb_construction
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
 # https://github.com/yijiangh/assembly_instances/tree/master/extrusion
-EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
+# EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
+EXTRUSION_DIRECTORY = pb_construction.get_data('assembly_instances/extrusion')
 EXTRUSION_FILENAMES = {
     # bunny (3)
     'C': 'C_shape.json',
@@ -27,9 +30,9 @@ EXTRUSION_FILENAMES = {
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
-def get_extrusion_dir():
-    root_directory = os.path.dirname(os.path.abspath(__file__))
-    return os.path.abspath(os.path.join(root_directory, EXTRUSION_DIRECTORY))
+# def get_extrusion_dir():
+#     root_directory = os.path.dirname(os.path.abspath(__file__))
+#     return os.path.abspath(os.path.join(root_directory, EXTRUSION_DIRECTORY))
 
 def get_extrusion_path(extrusion_name):
     if extrusion_name in EXTRUSION_FILENAMES:
@@ -176,6 +179,7 @@ def create_elements(node_points, elements, color=(1, 0, 0, 1)):
 ##################################################
 
 def draw_element(node_points, element, color=(1, 0, 0)):
+    from pybullet_planning import add_line
     n1, n2 = element
     p1 = node_points[n1]
     p2 = node_points[n2]
@@ -183,6 +187,7 @@ def draw_element(node_points, element, color=(1, 0, 0)):
 
 
 def draw_model(elements, node_points, ground_nodes):
+    from pb_construction.extrusion.utils import is_ground
     handles = []
     for element in elements:
         color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
@@ -190,6 +195,7 @@ def draw_model(elements, node_points, ground_nodes):
     return handles
 
 def draw_sequence(elements, node_points):
+    import colorsys
     #colors = spaced_colors(len(elements))
     colors = [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(0, 0.75, len(elements), endpoint=True)]
     handles = []

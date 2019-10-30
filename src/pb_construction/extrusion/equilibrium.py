@@ -2,10 +2,11 @@ from collections import namedtuple
 
 import numpy as np
 
-from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, create_stiffness_checker, evaluate_stiffness, Reaction, \
+from pb_construction.extrusion.parsing import load_extrusion
+from pb_construction.extrusion.utils import get_extructed_ids, create_stiffness_checker, evaluate_stiffness, Reaction, \
     force_from_reaction, compute_element_distance
-from pybullet_tools.utils import get_unit_vector
+
+from pybullet_planning import get_unit_vector
 
 ReactionForces = namedtuple('Reactions', ['loads', 'fixities', 'reactions'])
 

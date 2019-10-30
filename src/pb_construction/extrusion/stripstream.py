@@ -1,8 +1,8 @@
 import cProfile
 import pstats
 
-from extrusion.utils import element_supports, is_start_node
-from extrusion.stream import get_wild_print_gen_fn, test_stiffness
+from pb_construction.extrusion.utils import element_supports, is_start_node
+from pb_construction.extrusion.stream import get_wild_print_gen_fn, test_stiffness
 
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, PDDLProblem, print_solution

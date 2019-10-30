@@ -25,7 +25,7 @@ def read(*names, **kwargs):
 
 
 about = {}
-exec(read('src', 'pb-construction', '__version__.py'), about)
+exec(read('src', 'pb_construction', '__version__.py'), about)
 
 setup(
     name=about['__title__'],
@@ -40,8 +40,9 @@ setup(
                    re.S).sub('', read('README.rst')),
         # re.sub(':[a-z]+:`~?(.*?)`', r'``\1``', read('CHANGELOG.rst'))
     ),
-    packages=find_packages('src'),
-    package_dir={'': 'src'},
+    packages=['pb_construction.'+s for s in find_packages(where='src/pb_construction')] + ['pddlstream.'+s for s in find_packages(where='src/pddlstream/pddlstream')],
+    # packages=find_packages('src') + [s for s in find_packages(where='pddlstream/pddlstream')],
+    package_dir={'pddlstream' : 'src/pddlstream/pddlstream', 'pb_construction': 'src/pb_construction', '' : 'src'},
     py_modules=[splitext(basename(path))[0] for path in glob('src/*.py')],
     include_package_data=True,
     zip_safe=False,

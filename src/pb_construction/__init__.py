@@ -15,4 +15,5 @@ def get_data(filename):
     return _find_resource(filename)
 
 
-__all__ = ['__author__', '__author_email__', '__copyright__', '__description__', '__license__', '__title__', '__url__', '__version__', 'get_data']
+__all__ = ['__author__', '__author_email__', '__copyright__', '__description__', '__license__', '__title__', '__url__', '__version__', \
+    'get_data']

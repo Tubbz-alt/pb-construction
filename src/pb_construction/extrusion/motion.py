@@ -7,13 +7,10 @@ from pybullet_planning import get_movable_joints, set_joint_positions, plan_join
     connect, point_from_pose, get_link_pose, link_from_name, add_line, \
     wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user, set_camera_pose
 
-from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
-    TOOL_NAME
-from extrusion.visualization import draw_ordered, set_extrusion_camera
-from extrusion.stream import SELF_COLLISIONS
-
-JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
-                 0.03637161028426032, 0.04644626184081511, 0.015054267683041092]
+from pb_construction.extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
+    EE_LINK_NAME, JOINT_WEIGHTS
+from pb_construction.extrusion.visualization import draw_ordered, set_extrusion_camera
+from pb_construction.extrusion.stream import SELF_COLLISIONS
 
 def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, trajectories):
     # TODO: can just plan to initial and then shortcut
@@ -83,7 +80,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         for conf in trajectory.path:
             set_joint_positions(robot, movable_joints, conf)
             if isinstance(trajectory, PrintTrajectory):
-                current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_NAME)))
+                current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, EE_LINK_NAME)))
                 if last_point is not None:
                     color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
                     handles.append(add_line(last_point, current_point, color=color))

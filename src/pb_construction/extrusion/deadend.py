@@ -4,16 +4,15 @@ import heapq
 import time
 from collections import defaultdict
 
-from extrusion.greedy import get_heuristic_fn, Node, retrace_plan, add_successors, compute_printed_nodes
-from extrusion.parsing import load_extrusion
-from extrusion.stream import get_print_gen_fn
-from extrusion.utils import check_connected, test_stiffness, \
+from pb_construction.extrusion.greedy import get_heuristic_fn, Node, retrace_plan, add_successors, compute_printed_nodes
+from pb_construction.extrusion.parsing import load_extrusion
+from pb_construction.extrusion.stream import get_print_gen_fn
+from pb_construction.extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element
-from extrusion.visualization import color_structure
-# https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import INF, has_gui
-from pybullet_tools.utils import elapsed_time, \
-    LockRenderer, randomize
+from pb_construction.extrusion.visualization import color_structure
+
+from pybullet_planning import INF, has_gui
+from pybullet_planning import elapsed_time, LockRenderer, randomize
 
 
 def get_sample_traj(elements, print_gen_fn):

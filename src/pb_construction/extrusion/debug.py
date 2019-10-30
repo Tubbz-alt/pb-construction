@@ -4,15 +4,19 @@ import re
 
 import numpy as np
 
-from examples.pybullet.construction.extrusion.utils import TOOL_NAME, create_elements, get_grasp_pose, sample_direction
+from pb_construction.extrusion.parsing import create_elements
+from pb_construction.extrusion.utils import EE_LINK_NAME
+from pb_construction.extrusion.stream import get_grasp_pose
+from pb_construction.extrusion.debug import sample_direction
+from pb_construction.extrusion.utils import doubly_printable, get_node_neighbors, element_supports, get_supported_orders, \
+    retrace_supporters
+from pb_construction.extrusion.visualization import draw_element
+
 from pybullet_planning import get_movable_joints, get_joint_name, get_sample_fn, \
     set_joint_positions, wait_for_interrupt, link_from_name, inverse_kinematics, get_link_pose, Pose, Euler, Point, \
     multiply, set_pose, get_pose, invert, draw_pose, wait_for_user
-from extrusion.utils import doubly_printable, get_node_neighbors, element_supports, get_supported_orders, \
-    retrace_supporters
-from extrusion.visualization import draw_element
 
-from pddlstream.algorithms.incremental import solve_exhaustive
+from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.utils import read, get_file_path, user_input, neighbors_from_orders
@@ -76,7 +80,7 @@ def get_pddlstream_test(node_points, elements, ground_nodes):
 
 
 def test_ik(robot, node_order, node_points):
-    link = link_from_name(robot, TOOL_NAME)
+    link = link_from_name(robot, EE_LINK_NAME)
     movable_joints = get_movable_joints(robot)
     sample_fn = get_sample_fn(robot, movable_joints)
     for n in node_order:
@@ -98,7 +102,7 @@ def test_grasps(robot, node_points, elements):
     [element_body] = create_elements(node_points, [element])
 
     phi = 0
-    link = link_from_name(robot, TOOL_NAME)
+    link = link_from_name(robot, EE_LINK_NAME)
     link_pose = get_link_pose(robot, link)
     draw_pose(link_pose) #, parent=robot, parent_link=link)
     wait_for_user()
@@ -145,7 +149,7 @@ def test_print(robot, node_points, elements):
     #               for theta in np.linspace(0, 2*np.pi, 10, endpoint=False)]
     grasp_rotations = [sample_direction() for _ in range(25)]
 
-    link = link_from_name(robot, TOOL_NAME)
+    link = link_from_name(robot, EE_LINK_NAME)
     movable_joints = get_movable_joints(robot)
     sample_fn = get_sample_fn(robot, movable_joints)
     for grasp_rotation in grasp_rotations:
@@ -172,7 +176,7 @@ def plan_sequence_test(node_points, elements, ground_nodes):
     pr.enable()
     pddlstream_problem = get_pddlstream_test(node_points, elements, ground_nodes)
     #solution = solve_focused(pddlstream_problem, planner='goal-lazy', max_time=10, debug=False)
-    solution = solve_exhaustive(pddlstream_problem, planner='goal-lazy', max_time=10, debug=False)
+    solution = solve_incremental(pddlstream_problem, planner='goal-lazy', max_time=10, debug=False)
     print_solution(solution)
     pr.disable()
     pstats.Stats(pr).sort_stats('tottime').print_stats(10)

@@ -7,29 +7,24 @@ import cProfile
 import pstats
 import numpy as np
 import random
-import time
+import time, datetime
 import os
 import json
 
 from itertools import product
 from collections import OrderedDict
 from multiprocessing import Pool, cpu_count, TimeoutError
-sys.path.extend([
-    'pddlstream/',
-    'ss-pybullet/',
-])
 
-from extrusion.visualization import label_nodes, set_extrusion_camera
-from extrusion.experiment import load_experiment, train_parallel
-from extrusion.motion import compute_motions, display_trajectories
-from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, get_id_from_element
-from extrusion.parsing import load_extrusion, create_elements, \
+from pb_construction.extrusion.visualization import label_nodes, set_extrusion_camera
+from pb_construction.extrusion.experiment import load_experiment, train_parallel
+from pb_construction.extrusion.motion import compute_motions, display_trajectories
+from pb_construction.extrusion.utils import load_world, get_id_from_element
+from pb_construction.extrusion.parsing import load_extrusion, create_elements, \
     enumerate_problems, get_extrusion_path
-from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
-from extrusion.validator import verify_plan
-from extrusion.deadend import deadend
+from pb_construction.extrusion.stream import get_print_gen_fn
+from pb_construction.extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS, STIFFNESS_CRITERIA
+from pb_construction.extrusion.validator import verify_plan
+from pb_construction.extrusion.deadend import deadend
 
 from pybullet_planning import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK
@@ -119,7 +114,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         pr = cProfile.Profile()
         pr.enable()
         if args.algorithm == 'stripstream':
-            from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
+            from pb_construction.extrusion.stripstream import plan_sequence
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                        trajectories=trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)

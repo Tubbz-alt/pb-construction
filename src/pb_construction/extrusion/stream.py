@@ -4,20 +4,26 @@ import random
 from pybullet_planning import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
-    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator, randomize
-from extrusion.utils import TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
+    get_all_links, set_color, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, randomize, get_relative_pose
+
+from pb_construction.extrusion.utils import BASE_LINK_NAME, EE_LINK_NAME, IK_JOINT_NAMES, DISABLED_LINK_NAMES, TOOL_ROOT
+from pb_construction.extrusion.utils import get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command
-#from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
+
 from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
 
 try:
-    from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+    from compas_fab.backends.pybullet.ik_interfaces import sample_tool_ik
+    import ikfast_kuka_kr6_r900
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
     user_input("Press Enter to continue...")
 else:
     USE_IKFAST = True
+    IK_FN = ikfast_kuka_kr6_r900.get_ik
+
+SELF_COLLISIONS = True
 
 try:
     import pyconmech
@@ -27,9 +33,6 @@ except ImportError as e:
     user_input("Press Enter to continue...")
 else:
     USE_CONMECH = True
-
-SELF_COLLISIONS = True
-TOOL_ROOT = 'eef_base_link' # robot_tool0
 
 STEP_SIZE = 0.0025  # 0.005
 # 50 doesn't seem to be enough
@@ -58,7 +61,7 @@ def get_direction_generator():
         yield pose
 
 
-def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
+def get_grasp_pose(translation, direction, angle, reverse=0, offset=1e-3):
     #direction = Pose(euler=Euler(roll=np.pi / 2, pitch=direction))
     return multiply(Pose(point=Point(z=offset)),
                     Pose(euler=Euler(yaw=angle)),
@@ -118,12 +121,14 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
         # Pose_{world,EE} = Pose_{world,element} * Pose_{element,EE}
         #                 = Pose_{world,element} * (Pose_{EE,element})^{-1}
         target_pose = multiply(element_pose, invert(grasp_pose))
-        set_pose(tool, multiply(target_pose, tool_from_root))
+        robot_tool0_pose = multiply(target_pose, tool_from_root)
+        set_pose(tool, robot_tool0_pose)
 
         if nearby:
             set_joint_positions(robot, movable_joints, initial_conf)
         if USE_IKFAST:
-            conf = sample_tool_ik(robot, target_pose, closest_only=nearby)
+            conf = sample_tool_ik(IK_FN, robot, IK_JOINT_NAMES, BASE_LINK_NAME, robot_tool0_pose, closest_only=nearby)
+            # conf = sample_tool_ik(robot, target_pose, closest_only=nearby)
         else:
             if not nearby:
                 # randomly sample and set joint conf for the pybullet ik fn
@@ -149,17 +154,6 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
 def compute_direction_path(robot, tool, tool_from_root,
                            length, reverse, element_bodies, element, direction,
                            obstacles, collision_fn, num_angles=1, ee_only=False):
-    """
-    :param robot:
-    :param length: element's length
-    :param reverse: True if element end id tuple needs to be reversed
-    :param element: the considered element's pybullet body
-    :param direction: a sampled Pose (v \in unit sphere)
-    :param collision_fn: collision checker (pybullet_tools.utils.get_collision_fn)
-    note that all the static objs + elements in the support set of the considered element
-    are accounted in the collision fn
-    :return: feasible PrintTrajectory if found, None otherwise
-    """
     #angle_step_size = np.math.radians(0.25) # np.pi / 128
     #angle_deltas = [-angle_step_size, 0, angle_step_size]
     angle_deltas = [0]
@@ -180,7 +174,7 @@ def compute_direction_path(robot, tool, tool_from_root,
         print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
         return Command([print_traj])
 
-    tool_link = link_from_name(robot, TOOL_NAME)
+    tool_link = link_from_name(robot, EE_LINK_NAME)
     initial_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
                                                  translation_path[0], direction, reverse, initial_angles,
                                                  collision_fn, nearby=False)
@@ -228,7 +222,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     #for link in get_all_links(tool_body):
     #    set_color(tool_body, np.zeros(4), link)
 
-    tool_link = link_from_name(robot, TOOL_NAME)
+    tool_link = link_from_name(robot, EE_LINK_NAME)
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
 
     def gen_fn(node1, element, extruded=[]): # fluents=[]):
@@ -259,6 +253,9 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                         attachments=[], self_collisions=SELF_COLLISIONS,
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={}) # TODO: get_custom_limits
+        # from pybullet_planning import get_collision_diagnosis_fn
+        # collision_fn = get_collision_diagnosis_fn(robot, movable_joints, obstacles,
+        #         self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions, diagnosis=True)
 
         direction_generator = get_direction_generator()
         trajectories = []

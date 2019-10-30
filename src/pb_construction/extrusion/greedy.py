@@ -8,16 +8,15 @@ from collections import namedtuple, OrderedDict
 
 import numpy as np
 
-from pybullet_planning import elapsed_time, remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
-from extrusion.parsing import load_extrusion
-from extrusion.visualization import draw_element, draw_model, draw_ordered
-from extrusion.stream import get_print_gen_fn
-from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
-from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
+from pybullet_planning import elapsed_time, remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer, \
+    connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
 
-# https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
+from pb_construction.extrusion.parsing import load_extrusion
+from pb_construction.extrusion.visualization import draw_element, draw_model, draw_ordered
+from pb_construction.extrusion.stream import get_print_gen_fn
+from pb_construction.extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
+    create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
+from pb_construction.extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
@@ -112,6 +111,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, stiffness
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
                                                          checker=checker) for element in elements})
 
+    reaction_cache = {}
 
     def fn(printed, element):
         # Queue minimizes the statistic
@@ -264,6 +264,65 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None, sti
 
 ##################################################
 
+def export_log_data(extrusion_file_path, log_data, overwrite=True):
+    import os
+    import datetime
+    import json
+
+    with open(extrusion_file_path, 'r') as f:
+        shape_data = json.loads(f.read())
+    
+    if 'model_name' in shape_data:
+        file_name = shape_data['model_name']
+    else:
+        file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
+
+    result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_log')
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+    
+    data = OrderedDict()
+    data['assembly_type'] = 'extrusion'
+    data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
+    data.update(log_data)
+
+    file_name_tag = log_data['search_method'] + '-' + log_data['heuristic']
+    if log_data['heuristic'] in ['stiffness', 'fixed-stiffness']:
+        file_name_tag += '-' + log_data['stiffness_criteria']
+    plan_path = os.path.join(result_file_dir, '{}_log_{}{}.json'.format(file_name, 
+        file_name_tag,  '_'+data['write_time'] if not overwrite else ''))
+    with open(plan_path, 'w') as f:
+        # json.dump(data, f, indent=2, sort_keys=True)
+        json.dump(data, f)
+
+##################################################
+
+def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed, visualize=False):
+    remaining = elements - printed
+    num_remaining = len(remaining) - 1
+    assert 0 <= num_remaining
+    nodes = ground_nodes | nodes_from_elements(printed)
+    bias_from_element = {}
+    for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
+        if not any(n in nodes for n in element):
+            continue
+        bias = heuristic_fn(printed, element)
+        priority = (num_remaining, bias, random.random())
+        heapq.heappush(queue, (priority, printed, element))
+        bias_from_element[element] = bias
+
+    if visualize and has_gui():
+        handles = []
+        with LockRenderer():
+            remove_all_debug()
+            for element in printed:
+                handles.append(draw_element(node_points, element, color=(0, 0, 0)))
+            successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
+            handles.extend(draw_ordered(successors, node_points))
+        print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
+        wait_for_user()
+
 def progression(robot, obstacles, element_bodies, extrusion_path,
                 heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, stiffness_criteria='compliance', **kwargs):
 
@@ -357,7 +416,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     queue = []
     visited = {}
     def add_successors(printed):
-        for element in sorted(printed, key=lambda e: -get_z(node_points, e)):
+        for element in sorted(printed, key=lambda e: -1.0 * get_z(node_points, e)):
             num_remaining = len(printed) - 1
             assert 0 <= num_remaining
             bias = heuristic_fn(printed, element)

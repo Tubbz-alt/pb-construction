@@ -2,11 +2,12 @@ import colorsys
 
 import numpy as np
 
-from extrusion.equilibrium import compute_node_reactions
-from extrusion.parsing import load_extrusion
-from extrusion.utils import get_node_neighbors, force_from_reaction, is_ground
-from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
-    draw_point, LockRenderer, set_camera_pose, set_color, apply_alpha, RED, BLUE, GREEN
+from pb_construction.extrusion.equilibrium import compute_node_reactions
+from pb_construction.extrusion.parsing import load_extrusion
+from pb_construction.extrusion.utils import get_node_neighbors, force_from_reaction, is_ground
+
+from pybullet_planning import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
+    draw_point, LockRenderer, set_camera_pose, set_color #, apply_alpha, RED, BLUE, GREEN
 
 
 def label_nodes(element_bodies, element):
@@ -26,12 +27,13 @@ def label_elements(element_bodies):
         wait_for_user()
 
 def color_structure(element_bodies, printed, next_element):
-    for element in printed:
-        set_color(element_bodies[element], color=apply_alpha(BLUE, alpha=1))
-    set_color(element_bodies[next_element], color=apply_alpha(GREEN, alpha=1))
-    remaining = set(element_bodies) - printed - {next_element}
-    for element in remaining:
-        set_color(element_bodies[element], color=apply_alpha(RED, alpha=0.5))
+    # for element in printed:
+    #     set_color(element_bodies[element], color=apply_alpha(BLUE, alpha=1))
+    # set_color(element_bodies[next_element], color=apply_alpha(GREEN, alpha=1))
+    # remaining = set(element_bodies) - printed - {next_element}
+    # for element in remaining:
+    #     set_color(element_bodies[element], color=apply_alpha(RED, alpha=0.5))
+    pass
 
 
 def draw_reaction(point, reaction, max_length=0.05, max_force=1, **kwargs):

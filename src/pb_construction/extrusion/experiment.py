@@ -9,9 +9,10 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 
-from extrusion.greedy import GREEDY_HEURISTICS
-from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path, enumerate_problems
-from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
+from pb_construction.extrusion.greedy import GREEDY_HEURISTICS
+from pb_construction.extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path, enumerate_problems
+from pb_construction.extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
+
 from pybullet_planning import read_pickle, is_darwin, user_input, write_pickle, elapsed_time
 
 from pddlstream.utils import str_from_object, INF, get_python_version
@@ -120,7 +121,7 @@ def load_experiment(filename, overall=False):
 ##################################################
 
 def train_parallel(num=10, max_time=30*60):
-    from extrusion.run import ALGORITHMS, plan_extrusion
+    from pb_construction.extrusion.run import ALGORITHMS, plan_extrusion
     initial_time = time.time()
     print('Trials:', num)
     print('Max time:', max_time)

@@ -10,35 +10,59 @@ from pyconmech import StiffnessChecker
 from pybullet_planning import set_point, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, get_distance
 
-KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
-# KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion_mit_3-412.urdf'
-TOOL_NAME = 'eef_tcp_frame'
-# [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']
+import pb_construction
 
-# TODO: import from SRDF
-DISABLED_COLLISIONS = [
-    ('robot_base_link', 'workspace_objects'),
-    ('robot_link_1', 'workspace_objects'),
-    # ('robot_link_2', 'workspace_objects'),
-    # ('robot_link_3', 'workspace_objects'),
-    # ('robot_link_4', 'workspace_objects'),
-    ('robot_link_5', 'eef_base_link'),
-    ('robot_link_3', 'material_feeder_material_feeder'),
-]
+# URDF_PATH = 'models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+URDF_PATH = 'models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion_mit_3-412.urdf'
+SRDF_PATH = 'models/kuka_kr6_r900/srdf/kuka_kr6_r900_extrusion_mit_3-412.srdf'
+COLLISION_OBJ_DIR = 'somepath'
+COLLISION_FILE_PATTERN = '*.obj'
+
+def get_robot_data():
+    from compas.robots import RobotModel
+    from compas_fab.robots import Robot as RobotClass
+    from compas_fab.robots import RobotSemantics
+
+    urdf_filepath = pb_construction.get_data(URDF_PATH)
+    srdf_filepath = pb_construction.get_data(SRDF_PATH)
+
+    model = RobotModel.from_urdf_file(urdf_filepath)
+    semantics = RobotSemantics.from_srdf_file(srdf_filepath, model)
+    robot = RobotClass(model, semantics=semantics)
+
+    base_link_name = robot.get_base_link_name(group='manipulator_ee')
+    ee_link_name = robot.get_end_effector_link_name(group='manipulator_ee')
+    ik_joint_names = robot.get_configurable_joint_names(group='manipulator_ee')
+    disabled_link_names = semantics.get_disabled_collisions()
+
+    return base_link_name, ee_link_name, ik_joint_names, disabled_link_names
+
+BASE_LINK_NAME, EE_LINK_NAME, IK_JOINT_NAMES, DISABLED_LINK_NAMES = get_robot_data()
+TOOL_ROOT = 'eef_base_link' # robot_tool0 # TODO: call be derived from SRDF as well
+JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
+                 0.03637161028426032, 0.04644626184081511, 0.015054267683041092]
+
+# EXTRA_DISABLED_LINK_NAMES = [
+#     ('robot_base_link', 'workspace_objects'),
+#     ('robot_link_1', 'workspace_objects'),
+#     ('robot_link_3', 'material_feeder_material_feeder'),
+# ]
+
 CUSTOM_LIMITS = {
     'robot_joint_a1': (-np.pi/2, np.pi/2),
 }
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
-USE_FLOOR = True
+USE_FLOOR = False
 
 ##################################################
 
-def load_world(use_floor=USE_FLOOR):
+def load_world(use_floor=USE_FLOOR, parse_collision_objects=False):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     obstacles = []
     with HideOutput():
-        robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
+        # robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
+        robot = load_pybullet(pb_construction.get_data(URDF_PATH), fixed_base=True)
         lower, _ = get_aabb(robot)
         if use_floor:
             floor = load_model('models/short_floor.urdf')
@@ -46,6 +70,13 @@ def load_world(use_floor=USE_FLOOR):
             set_point(floor, Point(z=lower[2]))
         else:
             floor = None # TODO: make this an empty list of obstacles
+        if parse_collision_objects:
+            import glob
+            from pybullet_planning import create_obj
+            obj_file_names = glob.glob(os.path.join(pb_construction.get_data(COLLISION_OBJ_DIR), COLLISION_FILE_PATTERN))
+            if obj_file_names:
+                collision_objs = [create_obj(os.path.join(pb_construction.get_data(COLLISION_OBJ_DIR), file)) for file in obj_file_names]
+                obstacles.extend(collision_objs)
     return obstacles, robot
 
 
@@ -86,7 +117,7 @@ def get_element_neighbors(elements):
 def get_disabled_collisions(robot):
     return {tuple(link_from_name(robot, link)
                   for link in pair if has_link(robot, link))
-                  for pair in DISABLED_COLLISIONS}
+                  for pair in DISABLED_LINK_NAMES}
 
 def get_custom_limits(robot):
     return {joint_from_name(robot, joint): limits

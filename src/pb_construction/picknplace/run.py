@@ -1,10 +1,10 @@
 from __future__ import print_function
 
-import sys
-sys.path.extend([
-    'pddlstream/',
-    'ss-pybullet/',
-])
+# import sys
+# sys.path.extend([
+#     'pddlstream/',
+#     'ss-pybullet/',
+# ])
 
 import argparse
 import cProfile
@@ -17,10 +17,10 @@ from collections import namedtuple
 
 import numpy as np
 
-from extrusion.utils import get_disabled_collisions, get_custom_limits, MotionTrajectory
-from extrusion.parsing import parse_point, parse_transform
+from pb_construction.extrusion.utils import get_disabled_collisions, get_custom_limits, MotionTrajectory
+from pb_construction.extrusion.parsing import parse_point, parse_transform
 
-from pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
+from pybullet_planning import get_movable_joints, link_from_name, set_pose, \
     multiply, invert, inverse_kinematics, plan_direct_joint_motion, Attachment, set_joint_positions, plan_joint_motion, \
     get_configuration, wait_for_interrupt, point_from_pose, HideOutput, load_pybullet, draw_pose, unit_quat, create_obj, \
     add_body_name, get_pose, pose_from_tform, connect, WorldSaver, get_sample_fn, \
@@ -28,13 +28,13 @@ from pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
     add_fixed_constraint, remove_fixed_constraint, Pose, Euler, get_collision_fn, LockRenderer, user_input, has_gui, \
     disconnect
 
-from pddlstream.algorithms.focused import solve_focused
-from pddlstream.language.constants import And, print_solution
-from pddlstream.language.generator import from_gen_fn, from_fn
-from pddlstream.utils import read, get_file_path
+from pddlstream.pddlstream.algorithms.focused import solve_focused
+from pddlstream.pddlstream.language.constants import And, print_solution
+from pddlstream.pddlstream.language.generator import from_gen_fn, from_fn
+from pddlstream.pddlstream.utils import read, get_file_path
 
 try:
-    from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+    from pybullet_planning.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
@@ -91,7 +91,7 @@ def load_pick_and_place(extrusion_name, scale=MILLIMETER, max_bricks=6):
     with open(os.path.join(bricks_directory, PICKNPLACE_FILENAMES[extrusion_name]), 'r') as f:
         json_data = json.loads(f.read())
 
-    kuka_urdf = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_mit_suction_gripper.urdf'
+    kuka_urdf = '../pybullet_planning/models/kuka_kr6_r900/urdf/kuka_kr6_r900_mit_suction_gripper.urdf'
     obj_directory = os.path.join(bricks_directory, 'meshes', 'collision')
     with HideOutput():
         #world = load_pybullet(os.path.join(bricks_directory, 'urdf', 'brick_demo.urdf'))

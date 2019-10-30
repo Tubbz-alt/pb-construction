@@ -1,9 +1,9 @@
 from pybullet_planning import has_gui, wait_for_user, connect, reset_simulation, \
     disconnect, wait_for_duration
 
-from extrusion.parsing import load_extrusion
-from extrusion.visualization import draw_element
-from extrusion.utils import check_connected, test_stiffness, get_connected_structures, load_world
+from pb_construction.extrusion.parsing import load_extrusion
+from pb_construction.extrusion.visualization import draw_element
+from pb_construction.extrusion.utils import check_connected, test_stiffness, get_connected_structures, load_world
 
 
 def check_plan(extrusion_path, planned_elements, verbose=False):
