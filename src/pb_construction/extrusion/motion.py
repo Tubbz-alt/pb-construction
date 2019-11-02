@@ -5,54 +5,64 @@ import numpy as np
 
 from pybullet_planning import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, point_from_pose, get_link_pose, link_from_name, add_line, \
-    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user, set_camera_pose
+    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
 
 from pb_construction.extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
-    EE_LINK_NAME, JOINT_WEIGHTS
+    EE_LINK_NAME, JOINT_WEIGHTS, RESOLUTION
 from pb_construction.extrusion.visualization import draw_ordered, set_extrusion_camera
 from pb_construction.extrusion.stream import SELF_COLLISIONS
 
-def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, trajectories):
-    # TODO: can just plan to initial and then shortcut
+def compute_motion(robot, fixed_obstacles, element_bodies, printed_elements, start_conf, end_conf, collisions=True):
+    weights = JOINT_WEIGHTS
+    resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
+    disabled_collisions = get_disabled_collisions(robot)
+    movable_joints = get_movable_joints(robot)
+    set_joint_positions(robot, movable_joints, start_conf)
+    obstacles = fixed_obstacles + [element_bodies[e] for e in printed_elements]
+    if not collisions:
+        obstacles = []
+    path = plan_joint_motion(robot, movable_joints, end_conf, obstacles=obstacles,
+                             self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
+                             weights=weights, resolutions=resolutions,
+                             restarts=50, iterations=100, smooth=100)
+    if path is None:
+        print('Failed to find a motion plan!')
+        return None
+    motion_traj = MotionTrajectory(robot, movable_joints, path)
+    return motion_traj
+
+def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, print_trajectories, **kwargs):
+    # TODO: can also just plan to initial conf and then shortcut
     # TODO: backoff motion
     # TODO: reoptimize for the sequence that have the smallest movements given this
     # TODO: sample trajectories
     # TODO: more appropriate distance based on displacement/volume
-    if trajectories is None:
+    if print_trajectories is None:
         return None
-    print('start computing transition motions.')
+    print('Start computing transition motions.')
+    if any(isinstance(traj, MotionTrajectory) for traj in print_trajectories):
+        return print_trajectories
     start_time = time.time()
-    weights = np.array(JOINT_WEIGHTS)
-    resolutions = np.divide(0.005*np.ones(weights.shape), weights)
-    movable_joints = get_movable_joints(robot)
-    disabled_collisions = get_disabled_collisions(robot)
     printed_elements = []
-    current_conf = initial_conf
     all_trajectories = []
-    for i, print_traj in enumerate(trajectories):
-        set_joint_positions(robot, movable_joints, current_conf)
-        goal_conf = print_traj.path[0]
-        obstacles = fixed_obstacles + [element_bodies[e] for e in printed_elements]
-        path = plan_joint_motion(robot, movable_joints, goal_conf, obstacles=obstacles,
-                                 self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
-                                 weights=weights, resolutions=resolutions,
-                                 restarts=50, iterations=100, smooth=100)
-        if path is None:
-            print('Failed to find a motion plan!')
+    start_confs = [initial_conf] + [traj.path[-1] for traj in print_trajectories]
+    end_confs = [traj.path[0] for traj in print_trajectories] + [initial_conf]
+    for i, (start_conf, end_conf) in enumerate(zip(start_confs, end_confs)):
+        motion_traj = compute_motion(robot, fixed_obstacles, element_bodies,
+                                     printed_elements, start_conf, end_conf, **kwargs)
+        if motion_traj is None:
             return None
-        motion_traj = MotionTrajectory(robot, movable_joints, path)
         print('{}) {} | Time: {:.3f}'.format(i, motion_traj, elapsed_time(start_time)))
         all_trajectories.append(motion_traj)
-        current_conf = print_traj.path[-1]
-        printed_elements.append(print_traj.element)
-        all_trajectories.append(print_traj)
-    # TODO: return to initial?
-    print('Transition motions all found.')
+        if i < len(print_trajectories):
+            print_traj = print_trajectories[i]
+            printed_elements.append(print_traj.element)
+            all_trajectories.append(print_traj)
     return all_trajectories
 
 ##################################################
 
-def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.05):
+def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02):
     if trajectories is None:
         return
     connect(use_gui=True)
@@ -85,8 +95,10 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                     color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
                     handles.append(add_line(last_point, current_point, color=color))
                 last_point = current_point
-            wait_for_duration(time_step)
-        #wait_for_user()
+            if time_step is None:
+                wait_for_user()
+            else:
+                wait_for_duration(time_step)
 
         if isinstance(trajectory, PrintTrajectory):
             is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
@@ -96,7 +108,6 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                 wait_for_user()
             connected_nodes.add(trajectory.n2)
 
-    #user_input('Finish?')
     wait_for_user()
     reset_simulation()
     disconnect()

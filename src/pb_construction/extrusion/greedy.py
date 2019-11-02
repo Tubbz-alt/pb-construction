@@ -8,14 +8,16 @@ from collections import namedtuple, OrderedDict
 
 import numpy as np
 
-from pybullet_planning import elapsed_time, remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer, \
-    connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
+from pybullet_planning import INF
+from pybullet_planning import elapsed_time, remove_all_debug, wait_for_user, has_gui, LockRenderer, \
+    reset_simulation, disconnect, set_renderer, randomize, connect, ClientSaver, get_distance
 
 from pb_construction.extrusion.parsing import load_extrusion
 from pb_construction.extrusion.visualization import draw_element, draw_model, draw_ordered
 from pb_construction.extrusion.stream import get_print_gen_fn
-from pb_construction.extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
+from pb_construction.extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, \
+    test_stiffness, create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, \
+    nodes_from_elements, PrintTrajectory
 from pb_construction.extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
@@ -23,19 +25,21 @@ from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
-def retrace_plan(visited, current_state):
+def retrace_trajectories(visited, current_state):
     command, prev_state = visited[current_state]
     if prev_state is None:
         return []
-    return retrace_plan(visited, prev_state) + [traj for traj in command.trajectories]
-
+    return retrace_trajectories(visited, prev_state) + [traj for traj in command.trajectories]
     # TODO: search over local stability for each node
-    # TODO: progression search
+
+def retrace_elements(visited, current_state):
+    return [traj.element for traj in retrace_trajectories(visited, current_state)
+            if isinstance(traj, PrintTrajectory)]
 
 ##################################################
 
 def compute_printed_nodes(ground_nodes, printed):
-    return {n for e in printed for n in e} | set(ground_nodes)
+    return nodes_from_elements(printed) | set(ground_nodes)
 
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
     next_nodes =  compute_printed_nodes(ground_nodes, printed)
@@ -113,15 +117,15 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, stiffness
 
     reaction_cache = {}
 
-    def fn(printed, element):
+    def fn(printed, element, conf=None):
         # Queue minimizes the statistic
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
         # TODO: build away from the robot
 
-        #distance = 1
+        distance = 1
         #distance = len(structure)
-        distance = compute_element_distance(node_points, elements)
+        #distance = compute_element_distance(node_points, elements)
 
         operator = sum # sum | max
         fn = force_from_reaction  # force_from_reaction | torque_from_reaction
@@ -232,8 +236,8 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None, sti
     success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
     if not success:
         return INF
-    operation = np.max
-    #operation = np.sum # equivalently average
+    #operation = np.max
+    operation = np.sum # equivalently average
     # TODO: LInf or L1 norm applied on forces
     # TODO: looking for a colored path through the space
 
@@ -244,13 +248,13 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None, sti
     relative_rot = max_rot / rot_tol # lower is better
     # More quickly approximate deformations by modifying the matrix operations incrementally
 
-    reaction_forces = np.array([d[:3] for d in fixities_reaction.values()])
-    reaction_moments = np.array([d[3:] for d in fixities_reaction.values()])
-    heuristic = 'fixities_rotation'
+    reaction_forces = np.array([force_from_reaction(d) for d in fixities_reaction.values()])
+    reaction_moments = np.array([torque_from_reaction(d) for d in fixities_reaction.values()])
+    heuristic = 'compliance'
     scores = {
         # Yijiang was surprised that fixities_translation worked
-        'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
-        'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
+        'fixities_translation': np.linalg.norm(reaction_forces, axis=1), # Bad when forward
+        'fixities_rotation': np.linalg.norm(reaction_moments, axis=1), # Bad when forward
         'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
         'compliance': [-checker.get_compliance()], # negated because higher is better
         'deformation': [relative_trans, relative_rot],
@@ -298,19 +302,40 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True):
 
 ##################################################
 
-def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed, visualize=False):
+def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed, conf, visualize=False):
+    """successor generation function used in progression & deadend algorithm
+    
+    Parameters
+    ----------
+    queue : [type]
+        [description]
+    elements : [type]
+        [description]
+    node_points : [type]
+        [description]
+    ground_nodes : [type]
+        [description]
+    heuristic_fn : [type]
+        [description]
+    printed : [type]
+        [description]
+    conf : [type]
+        [description]
+    visualize : bool, optional
+        [description], by default False
+    """
     remaining = elements - printed
     num_remaining = len(remaining) - 1
     assert 0 <= num_remaining
-    nodes = ground_nodes | nodes_from_elements(printed)
+    nodes = compute_printed_nodes(ground_nodes, printed)
     bias_from_element = {}
-    for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
-        if not any(n in nodes for n in element):
-            continue
-        bias = heuristic_fn(printed, element)
-        priority = (num_remaining, bias, random.random())
-        heapq.heappush(queue, (priority, printed, element))
-        bias_from_element[element] = bias
+    for element in randomize(remaining):
+        if any(n in nodes for n in element):
+            bias = heuristic_fn(printed, element, conf)
+            priority = (num_remaining, bias, random.random())
+            visits = 0
+            heapq.heappush(queue, (visits, priority, printed, element, conf))
+            bias_from_element[element] = bias
 
     if visualize and has_gui():
         handles = []
@@ -324,7 +349,8 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
         wait_for_user()
 
 def progression(robot, obstacles, element_bodies, extrusion_path,
-                heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, stiffness_criteria='compliance', **kwargs):
+                heuristic='z', max_time=INF, max_backtrack=INF, 
+                stiffness=True, stiffness_criteria='compliance', **kwargs):
 
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
@@ -345,18 +371,21 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         }
         return None, data
 
+    initial_conf = None
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
     #add_successors(initial_printed)
-    add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed)
+    add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf)
 
     plan = None
     min_remaining = INF
     num_evaluated = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
-        _, printed, element = heapq.heappop(queue)
+
+        # (visits, priority, printed, element, conf)
+        _, _, printed, element, _ = heapq.heappop(queue)
         num_remaining = len(elements) - len(printed)
         backtrack = num_remaining - min_remaining
         if max_backtrack <= backtrack:
@@ -376,14 +405,14 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         visited[next_printed] = Node(command, printed)
         if elements <= next_printed:
             min_remaining = 0
-            plan = retrace_plan(visited, next_printed)
+            plan = retrace_trajectories(visited, next_printed)
             break
         #add_successors(next_printed)
-        add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed)
+        add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed, initial_conf)
 
     sequence = None
     if plan is not None:
-        sequence = [traj.element for traj in plan]
+        sequence = [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
     data = {
         'sequence': sequence,
         'runtime': elapsed_time(start_time),
@@ -492,6 +521,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
             continue
+        # TODO: could do this eagerly to inspect the full branching factor
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
             continue
@@ -523,7 +553,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
 
         if not next_printed:
             min_remaining = 0
-            plan = list(reversed(retrace_plan(visited, next_printed)))
+            plan = list(reversed(retrace_trajectories(visited, next_printed)))
             break
         add_successors(next_printed)
 
@@ -533,7 +563,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     # TODO: store maximum stiffness violations (for speed purposes)
     sequence = None
     if plan is not None:
-        sequence = [traj.element for traj in plan]
+        sequence = [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
     data = {
         'sequence': sequence,
         'runtime': elapsed_time(start_time),

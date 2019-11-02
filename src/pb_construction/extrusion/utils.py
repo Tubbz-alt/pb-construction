@@ -7,7 +7,7 @@ from collections import defaultdict, deque, namedtuple
 
 from pyconmech import StiffnessChecker
 
-from pybullet_planning import set_point, set_joint_positions, \
+from pybullet_planning import get_link_pose, BodySaver, set_point, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, get_distance
 
 import pb_construction
@@ -55,6 +55,11 @@ SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
 USE_FLOOR = False
 
+
+RESOLUTION = 0.005
+JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
+                          0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
+
 ##################################################
 
 def load_world(use_floor=USE_FLOOR, parse_collision_objects=False):
@@ -100,7 +105,7 @@ def get_node_neighbors(elements):
 
 def nodes_from_elements(elements):
     # TODO: always include ground nodes
-    return set(get_node_neighbors(elements))
+    return {n for e in elements for n in e}
 
 def get_element_neighbors(elements):
     node_neighbors = get_node_neighbors(elements)
@@ -125,47 +130,74 @@ def get_custom_limits(robot):
 
 ##################################################
 
-class MotionTrajectory(object):
-    def __init__(self, robot, joints, path, attachments=[]):
+class Trajectory(object):
+    def __init__(self, robot, joints, path):
         self.robot = robot
         self.joints = joints
         self.path = path
-        self.attachments = attachments
+        self.path_from_link = {}
+    def get_link_path(self, link_name=EE_LINK_NAME):
+        link = link_from_name(self.robot, link_name)
+        if link not in self.path_from_link:
+            with BodySaver(self.robot):
+                self.path_from_link[link] = []
+                for conf in self.path:
+                    set_joint_positions(self.robot, self.joints, conf)
+                    self.path_from_link[link].append(get_link_pose(self.robot, link))
+        return self.path_from_link[link]
     def reverse(self):
-        return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
+        raise NotImplementedError()
     def iterate(self):
         for conf in self.path[1:]:
             set_joint_positions(self.robot, self.joints, conf)
             yield
+
+class MotionTrajectory(Trajectory):
+    def __init__(self, robot, joints, path, attachments=[]):
+        super(MotionTrajectory, self).__init__(robot, joints, path)
+        self.attachments = attachments
+    def reverse(self):
+        return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
     def __repr__(self):
         return 'm(#J {},#pth {})'.format(len(self.joints), len(self.path))
 
-class PrintTrajectory(object):
-    def __init__(self, robot, joints, path, tool_path, element, is_reverse):
-        self.robot = robot
-        self.joints = joints
-        self.path = path
+class PrintTrajectory(Trajectory):
+    def __init__(self, robot, joints, path, tool_path, element, is_reverse=False):
+        super(PrintTrajectory, self).__init__(robot, joints, path)
         self.tool_path = tool_path
         self.is_reverse = is_reverse
         #assert len(self.path) == len(self.tool_path)
         self.element = element
         self.n1, self.n2 = reversed(element) if self.is_reverse else element
+    @property
     def directed_element(self):
         return (self.n1, self.n2)
+    def get_link_path(self, link_name=EE_LINK_NAME):
+        if link_name == EE_LINK_NAME:
+            return self.tool_path
+        return super(PrintTrajectory, self).get_link_path(link_name)
     def reverse(self):
         return self.__class__(self.robot, self.joints, self.path[::-1],
-                              self.tool_path[::-1], self.element, self.is_reverse)
-    def iterate(self):
-        for conf in self.path[1:]:
-            set_joint_positions(self.robot, self.joints, conf)
-            yield
+                              self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
         return 'n{}->n{}'.format(self.n1, self.n2)
 
 class Command(object):
     def __init__(self, trajectories=[], colliding=set()):
-        self.trajectories = tuple(trajectories)
+        self.trajectories = list(trajectories)
         self.colliding = set(colliding)
+    @property
+    def print_trajectory(self):
+        for traj in self.trajectories:
+            if isinstance(traj, PrintTrajectory):
+                return traj
+        return None
+    @property
+    def start_conf(self):
+        return self.trajectories[0].path[0]
+    @property
+    def end_conf(self):
+        return self.trajectories[-1].path[-1]
     def reverse(self):
         return self.__class__([traj.reverse() for traj in reversed(self.trajectories)],
                               colliding=self.colliding)
@@ -294,9 +326,15 @@ def create_stiffness_checker(extrusion_path, verbose=False):
 def get_id_from_element(element_from_id):
     return {e: i for i, e in element_from_id.items()}
 
-def get_extructed_ids(element_from_id, elements):
+def get_extructed_ids(element_from_id, directed_elements):
     id_from_element = get_id_from_element(element_from_id)
-    return sorted(id_from_element[e] for e in elements)
+    extruded_ids = []
+    for directed in directed_elements:
+        is_reverse = directed not in id_from_element
+        assert (directed in id_from_element) != is_reverse
+        element = directed[::-1] if is_reverse else directed
+        extruded_ids.append(id_from_element[element])
+    return sorted(extruded_ids)
 
 Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])

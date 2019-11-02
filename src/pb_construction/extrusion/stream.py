@@ -4,11 +4,13 @@ import random
 from pybullet_planning import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
-    get_all_links, set_color, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, randomize, get_relative_pose
+    get_all_links, set_color, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, randomize, \
+    get_relative_pose, get_extend_fn
 
-from pb_construction.extrusion.utils import BASE_LINK_NAME, EE_LINK_NAME, IK_JOINT_NAMES, DISABLED_LINK_NAMES, TOOL_ROOT
+from pb_construction.extrusion.utils import BASE_LINK_NAME, EE_LINK_NAME, IK_JOINT_NAMES, DISABLED_LINK_NAMES, \
+    TOOL_ROOT, JOINT_WEIGHTS, RESOLUTION
 from pb_construction.extrusion.utils import get_disabled_collisions, get_node_neighbors, \
-    PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command
+    PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory
 
 from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
 
@@ -47,10 +49,10 @@ MAX_ATTEMPTS = 1000  # 150 | 300
     #return multiply(thing, rot)
 
 
-def get_direction_generator():
+def get_direction_generator(**kwargs):
     lower = [-np.pi/2, -np.pi/2]
     upper = [+np.pi/2, +np.pi/2]
-    for [roll, pitch] in interval_generator(lower, upper, use_halton=True):
+    for [roll, pitch] in interval_generator(lower, upper, **kwargs):
         ##roll = random.uniform(0, np.pi)
         #roll = np.pi/4
         #pitch = random.uniform(0, 2*np.pi)
@@ -95,7 +97,7 @@ def command_collision(tool_body, tool_from_root, command, bodies):
 
     # TODO: separate into another method. Sort paths by tool poses first
     for trajectory in command.trajectories:
-        for tool_pose in randomize(trajectory.tool_path): # TODO: bisect
+        for tool_pose in randomize(trajectory.get_link_path()): # TODO: bisect
             set_pose(tool_body, multiply(tool_pose, tool_from_root))
             for i, body in enumerate(bodies):
                 if not collisions[i]:
@@ -151,6 +153,41 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
 
 ##################################################
 
+APPROACH_DISTANCE = 0.01
+
+def plan_approach(robot, print_traj, collision_fn):
+    if APPROACH_DISTANCE == 0:
+        return Command([print_traj])
+    joints = get_movable_joints(robot)
+    weights = JOINT_WEIGHTS
+    resolutions = np.divide(0.25*RESOLUTION*np.ones(weights.shape), weights)
+    extend_fn = get_extend_fn(robot, joints, resolutions=resolutions)
+    tool_link = link_from_name(robot, EE_LINK_NAME)
+    approach_pose = Pose(Point(z=-APPROACH_DISTANCE))
+
+    start_conf = print_traj.path[0]
+    set_joint_positions(robot, joints, start_conf)
+    initial_pose = multiply(print_traj.tool_path[0], approach_pose)
+    initial_conf = inverse_kinematics(robot, tool_link, initial_pose)
+    if initial_conf is None:
+        return None
+    initial_path = [initial_conf] + list(extend_fn(initial_conf, start_conf))
+    if any(map(collision_fn, initial_path)):
+        return None
+    initial_traj = MotionTrajectory(robot, joints, initial_path)
+
+    end_conf = print_traj.path[-1]
+    set_joint_positions(robot, joints, end_conf)
+    final_pose = multiply(print_traj.tool_path[-1], approach_pose)
+    final_conf = inverse_kinematics(robot, tool_link, final_pose)
+    if final_conf is None:
+        return None
+    final_path = [end_conf] + list(extend_fn(end_conf, final_conf)) # TODO: version that includes the endpoints
+    if any(map(collision_fn, final_path)):
+        return None
+    final_traj = MotionTrajectory(robot, joints, final_path)
+    return Command([initial_traj, print_traj, final_traj])
+
 def compute_direction_path(robot, tool, tool_from_root,
                            length, reverse, element_bodies, element, direction,
                            obstacles, collision_fn, num_angles=1, ee_only=False):
@@ -197,7 +234,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 
     tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
     print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
-    return Command([print_traj])
+    return plan_approach(robot, print_traj, collision_fn)
 
 ##################################################
 
@@ -208,6 +245,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
+    # TODO: sort by number of end-effector collisions
 
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
@@ -225,7 +263,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     tool_link = link_from_name(robot, EE_LINK_NAME)
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
 
-    def gen_fn(node1, element, extruded=[]): # fluents=[]):
+    def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         reverse = (node1 != element[0])
         if disable:
             path, tool_path = [], []
@@ -239,6 +277,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         # if delta[2] < 0:
         #    continue
         length = np.linalg.norm(delta)  # 5cm
+        neighboring_elements = node_neighbors[n1] & node_neighbors[n2]
+        grounded = any(n in ground_nodes for n in element)
 
         #supporters = {e for e in node_neighbors[n1] if element_supports(e, n1, node_points)}
         supporters = []
@@ -257,35 +297,39 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         # collision_fn = get_collision_diagnosis_fn(robot, movable_joints, obstacles,
         #         self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions, diagnosis=True)
 
-        direction_generator = get_direction_generator()
-        trajectories = []
+        direction_generator = get_direction_generator(use_halton=False)
+        trajectories = list(trajectories)
         for num in irange(INF):
             for attempt in irange(max_directions):
                 direction = next(direction_generator)
                 for _ in range(max_attempts):
                     if bidirectional:
                         reverse = random.choice([False, True])
+                    n1, n2 = reversed(element) if reverse else element
                     command = compute_direction_path(robot, tool_body, tool_from_root,
                                                      length, reverse, element_bodies, element,
                                                      direction, obstacles, collision_fn, **kwargs)
                     if command is None:
                         continue
-                    if precompute_collisions:
+                    if collisions and precompute_collisions:
                         bodies_order = [element_bodies[e] for e in elements_order]
                         colliding = command_collision(tool_body, tool_from_root, command, bodies_order)
                         command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
-                    if (node_neighbors[n1] <= command.colliding) and not any(n in ground_nodes for n in element):
-                        continue
+                    if not grounded and (neighboring_elements <= command.colliding):
+                        continue # If all neighbors collide
                     trajectories.append(command)
                     prune_dominated(trajectories)
                     if command not in trajectories:
                         continue
+                    if collisions and (len(command.colliding) == 1):
+                        [colliding_element] = command.colliding
+                        obstacles.add(element_bodies[colliding_element])
                     print('{}) {}->{} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
                         num, n1, n2, len(supporters), attempt, len(trajectories),
                         sorted(len(t.colliding) for t in trajectories)))
                     yield (command,)
                     if precompute_collisions and not command.colliding:
-                        print('Reevaluated already non-colliding trajectory!')
+                        #print('Reevaluated already non-colliding trajectory!')
                         return
                     break
             else:

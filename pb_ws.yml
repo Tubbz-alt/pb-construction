@@ -13,3 +13,4 @@ dependencies:
      - pybullet_planning
      - ikfast_pybind
      - pyconmech
+     - git+https://github.com/yijiangh/pddlstream.git@feature/pip_install#egg=pddlstream

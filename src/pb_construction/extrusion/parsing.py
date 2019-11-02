@@ -4,9 +4,9 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 
-from pybullet_planning import create_cylinder, set_point, set_quat, \
-    quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform
 import pb_construction
+from pybullet_planning import create_cylinder, set_point, set_quat, \
+    quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, RED, apply_alpha
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
@@ -35,7 +35,9 @@ DEFAULT_SCALE = 1e-3 # TODO: load different scales
 #     return os.path.abspath(os.path.join(root_directory, EXTRUSION_DIRECTORY))
 
 def get_extrusion_path(extrusion_name):
-    if extrusion_name in EXTRUSION_FILENAMES:
+    if extrusion_name.endswith('.json'):
+        filename = os.path.basename(extrusion_name)
+    elif extrusion_name in EXTRUSION_FILENAMES:
         filename = EXTRUSION_FILENAMES[extrusion_name]
     else:
         filename = '{}.json'.format(extrusion_name)
@@ -61,8 +63,7 @@ def load_extrusion(extrusion_path, verbose=False):
         json_data = json.loads(f.read())
     assert json_data['unit'] == 'millimeter'
 
-    elements = parse_elements(json_data)
-    element_from_id = OrderedDict((element.id, element.nodes) for element in elements)
+    element_from_id = OrderedDict((element.id, element.nodes) for element in parse_elements(json_data))
     node_points = parse_node_points(json_data)
     min_z = np.min(node_points, axis=0)[2]
     #print('Min z: {}'.format(min_z))
@@ -72,7 +73,7 @@ def load_extrusion(extrusion_path, verbose=False):
         print('Assembly: {} | Model: {} | Unit: {}'.format(
             json_data['assembly_type'], json_data['model_type'], json_data['unit'])) # extrusion, spatial_frame, millimeter
         print('Nodes: {} | Ground: {} | Elements: {}'.format(
-            len(node_points), len(ground_nodes), len(elements)))
+            len(node_points), len(ground_nodes), len(element_from_id)))
     return element_from_id, node_points, ground_nodes
 
 
@@ -149,7 +150,7 @@ def affine_extrusion(extrusion_path, tform):
 
 ##################################################
 
-def create_elements(node_points, elements, color=(1, 0, 0, 1)):
+def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1)):
     # TODO: just shrink the structure to prevent worrying about collisions at end-points
     # TODO: could scale the whole environment
     radius = 1e-6 # 5e-5 | 1e-4

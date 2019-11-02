@@ -15,16 +15,16 @@ from itertools import product
 from collections import OrderedDict
 from multiprocessing import Pool, cpu_count, TimeoutError
 
-from pb_construction.extrusion.visualization import label_nodes, set_extrusion_camera
+from pb_construction.extrusion.visualization import label_element, set_extrusion_camera, label_nodes
 from pb_construction.extrusion.experiment import load_experiment, train_parallel
 from pb_construction.extrusion.motion import compute_motions, display_trajectories
-from pb_construction.extrusion.utils import load_world, get_id_from_element
-from pb_construction.extrusion.parsing import load_extrusion, create_elements, \
+from pb_construction.extrusion.utils import load_world, get_id_from_element, PrintTrajectory
+from pb_construction.extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path
 from pb_construction.extrusion.stream import get_print_gen_fn
 from pb_construction.extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS, STIFFNESS_CRITERIA
 from pb_construction.extrusion.validator import verify_plan
-from pb_construction.extrusion.deadend import deadend
+from pb_construction.extrusion.deadend import lookahead
 
 from pybullet_planning import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK
@@ -52,7 +52,7 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)
     all_trajectories = []
     for index, (element, element_body) in enumerate(element_bodies.items()):
-        label_nodes(element_bodies, element)
+        label_element(element_bodies, element)
         trajectories = []
         for node1 in element:
             for traj, in gen_fn(node1, element):
@@ -97,9 +97,11 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
         alpha = 1 # 0
-        element_bodies = dict(zip(elements, create_elements(
+        element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=apply_alpha(BLACK, alpha))))
         set_extrusion_camera(node_points)
+        if viewer:
+            label_nodes(node_points)
 
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
@@ -126,7 +128,13 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
-                                                    disable=args.disable, stiffness=args.stiffness)
+                                                    disable=args.disable, stiffness=args.stiffness, 
+                                                    stiffness_criteria=args.stiffness_criteria)
+        elif args.algorithm == 'deadend':
+            planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
+                                                   max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,
+                                                   disable=args.disable, stiffness=args.stiffness, motions=args.motions,
+                                                   stiffness_criteria=args.stiffness_criteria)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -137,16 +145,19 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                 sys.stdout.close()
             return args, data
         if args.motions:
-            planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
+            planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories,
+                                                   collisions=not args.cfree)
     reset_simulation()
     disconnect()
 
-    id_from_element = get_id_from_element(element_from_id)
-    planned_elements = [traj.element for traj in planned_trajectories if hasattr(traj, 'element')]
-    planned_ids = [id_from_element[element] for element in planned_elements]
+    #id_from_element = get_id_from_element(element_from_id)
+    #planned_ids = [id_from_element[traj.element] for traj in planned_trajectories]
+    planned_elements = [traj.directed_element for traj in planned_trajectories
+                        if isinstance(traj, PrintTrajectory)]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
-    valid = verify_plan(problem_path, planned_elements, use_gui=False)
+    animate = not (args.disable or args.ee_only)
+    valid = verify_plan(problem_path, planned_elements) #, use_gui=not animate)
 
     plan_data = {
         'problem':  args.problem,
@@ -156,7 +167,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         'plan_extrusions': not args.disable,
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
-        'plan': planned_ids,
+        'plan': planned_elements,
         'valid': valid,
     }
     plan_data.update(data)
@@ -172,7 +183,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         json.dump(plan_data, f, indent=2, sort_keys=True)
 
     if watch:
-        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=not args.disable)
+        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate, time_step=0.04)
     if not verbose:
         sys.stdout.close()
     return args, data
@@ -201,6 +212,8 @@ def main():
                         help='Disables collisions with obstacles')
     parser.add_argument('-d', '--disable', action='store_true',
                         help='Disables trajectory planning')
+    parser.add_argument('-e', '--ee_only', action='store_true',
+                        help='Disables arm planning')
     parser.add_argument('-m', '--motions', action='store_true',
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
