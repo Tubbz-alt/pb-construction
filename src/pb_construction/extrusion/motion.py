@@ -67,7 +67,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         return
     connect(use_gui=True)
     set_extrusion_camera(node_points)
-    obstacles, robot = load_world()
+    obstacles, robot, _ = load_world()
     movable_joints = get_movable_joints(robot)
     if not animate:
         planned_elements = [traj.element for traj in trajectories]

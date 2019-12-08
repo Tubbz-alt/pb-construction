@@ -56,7 +56,7 @@ def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
 def display_failure(node_points, extruded_elements, element):
     client = connect(use_gui=True)
     with ClientSaver(client):
-        obstacles, robot = load_world()
+        obstacles, robot, _ = load_world()
         handles = []
         for e in extruded_elements:
             handles.append(draw_element(node_points, e, color=(0, 1, 0)))
@@ -350,14 +350,15 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
 
 def progression(robot, obstacles, element_bodies, extrusion_path,
                 heuristic='z', max_time=INF, max_backtrack=INF, 
-                stiffness=True, stiffness_criteria='compliance', **kwargs):
+                stiffness=True, stiffness_criteria='compliance', workspace_bodies=[], **kwargs):
 
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False, max_directions=500, **kwargs)
+                                    precompute_collisions=False, max_directions=500, 
+                                    **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True, stiffness_criteria=stiffness_criteria)
@@ -426,7 +427,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 
 def regression(robot, obstacles, element_bodies, extrusion_path,
                heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, 
-               stiffness_criteria='compliance', log=False, **kwargs):
+               stiffness_criteria='compliance', log=False, workspace_bodies=[], **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search to reuse
@@ -438,7 +439,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False, max_attempts=500, **kwargs)
+                                    precompute_collisions=False, max_attempts=500,
+                                    **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
     # TODO: compute the heuristic function once and fix
 

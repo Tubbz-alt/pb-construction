@@ -5,17 +5,17 @@ from pybullet_planning import get_movable_joints, get_joint_positions, multiply,
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
     get_all_links, set_color, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, randomize, \
-    get_relative_pose, get_extend_fn
+    get_relative_pose, get_extend_fn, get_body_body_disabled_collisions
 
-from pb_construction.extrusion.utils import BASE_LINK_NAME, EE_LINK_NAME, IK_JOINT_NAMES, DISABLED_LINK_NAMES, \
-    TOOL_ROOT, JOINT_WEIGHTS, RESOLUTION
+from pb_construction.extrusion.utils import BASE_LINK_NAME, EE_LINK_NAME, IK_JOINT_NAMES, DISABLED_SELF_COLLISION_LINK_NAMES, \
+    TOOL_ROOT_LINK_NAME, JOINT_WEIGHTS, RESOLUTION, APPROACH_DISTANCE, WORKSPACE_ROBOT_DISABLED_LINK_NAMES
 from pb_construction.extrusion.utils import get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory
 
 from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
 
 try:
-    from compas_fab.backends.pybullet.ik_interfaces import sample_tool_ik
+    from pybullet_planning import sample_tool_ik
     import ikfast_kuka_kr6_r900
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
@@ -153,8 +153,6 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
 
 ##################################################
 
-APPROACH_DISTANCE = 0.01
-
 def plan_approach(robot, print_traj, collision_fn):
     if APPROACH_DISTANCE == 0:
         return Command([print_traj])
@@ -241,7 +239,8 @@ def compute_direction_path(robot, tool, tool_from_root,
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True, bidirectional=False,
                      collisions=True, disable=False,
-                     max_directions=MAX_ATTEMPTS, max_attempts=1, **kwargs):
+                     max_directions=MAX_ATTEMPTS, max_attempts=1, 
+                     **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
@@ -254,7 +253,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
 
     #dump_body(robot)
-    root_link = link_from_name(robot, TOOL_ROOT)
+    root_link = link_from_name(robot, TOOL_ROOT_LINK_NAME)
     tool_links = get_link_subtree(robot, root_link)
     tool_body = clone_body(robot, links=tool_links, visual=False, collision=True)
     #for link in get_all_links(tool_body):
@@ -262,6 +261,11 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
     tool_link = link_from_name(robot, EE_LINK_NAME)
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
+
+    extra_disabled_collisions = []
+    if WORKSPACE_ROBOT_DISABLED_LINK_NAMES:
+        for ws_body in fixed_obstacles:
+            extra_disabled_collisions.extend(get_body_body_disabled_collisions(robot, ws_body, WORKSPACE_ROBOT_DISABLED_LINK_NAMES))
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         reverse = (node1 != element[0])
@@ -292,6 +296,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
                                         attachments=[], self_collisions=SELF_COLLISIONS,
                                         disabled_collisions=disabled_collisions,
+                                        extra_disabled_collisions=extra_disabled_collisions,
                                         custom_limits={}) # TODO: get_custom_limits
         # from pybullet_planning import get_collision_diagnosis_fn
         # collision_fn = get_collision_diagnosis_fn(robot, movable_joints, obstacles,
@@ -342,7 +347,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 ##################################################
 
 def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                          collisions=True, **kwargs):
+                          collisions=True, workspace_bodies=[], **kwargs):
     from pddlstream.language.stream import WildOutput
     
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs)

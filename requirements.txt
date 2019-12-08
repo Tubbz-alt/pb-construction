@@ -1,3 +1,7 @@
 numpy
 pybullet
 pybullet_planning
+pddlstream
+ikfast_pybind
+pyconmech
+compas_fab # for URDF/SRDF parsing

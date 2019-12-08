@@ -12,7 +12,9 @@ Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
 # https://github.com/yijiangh/assembly_instances/tree/master/extrusion
 # EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
-EXTRUSION_DIRECTORY = pb_construction.get_data('assembly_instances/extrusion')
+# EXTRUSION_DIRECTORY = pb_construction.get_data('assembly_instances/extrusion')
+import pychoreo_examples
+EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
 EXTRUSION_FILENAMES = {
     # bunny (3)
     'C': 'C_shape.json',
@@ -26,7 +28,9 @@ EXTRUSION_FILENAMES = {
     'topopt-205': 'topopt-205_S0.7_03-14-2019_w_layer.json',
     'topopt-310': 'topopt-310_S1_03-14-2019_w_layer.json',
     'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
-
+    'four-frame': 'four-frame.json',
+    'long_beam_test': 'long_beam_test.json',
+    'extreme_beam_test': 'extreme_beam_test.json',
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
@@ -66,7 +70,6 @@ def load_extrusion(extrusion_path, verbose=False):
     element_from_id = OrderedDict((element.id, element.nodes) for element in parse_elements(json_data))
     node_points = parse_node_points(json_data)
     min_z = np.min(node_points, axis=0)[2]
-    #print('Min z: {}'.format(min_z))
     node_points = [np.array([0, 0, -min_z]) + point for point in node_points]
     ground_nodes = parse_ground_nodes(json_data)
     if verbose:

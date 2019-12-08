@@ -46,7 +46,7 @@ def verify_plan(extrusion_path, planned_elements, use_gui=False):
     # Path heuristic
     # Disable shadows
     connect(use_gui=use_gui)
-    obstacles, robot = load_world()
+    obstacles, robot, _ = load_world()
     is_valid = check_plan(extrusion_path, planned_elements)
     reset_simulation()
     disconnect()

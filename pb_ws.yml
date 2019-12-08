@@ -1,16 +1,17 @@
 name: pb_ws
 
-channels:
-    - conda-forge
+# * use compas_fab from this channel after my local compas_fab gets merged and released
+# channels:
+#     - conda-forge
 
 dependencies:
-   - python=3.6
-   - pip=19.0.1
+   - pip
    - numpy
-   - scipy
    - pip:
      - pybullet
      - pybullet_planning
      - ikfast_pybind
      - pyconmech
+     - git+https://github.com/yijiangh/compas_fab.git@feature/pybullet_backend#egg=compas_fab
      - git+https://github.com/yijiangh/pddlstream.git@feature/pip_install#egg=pddlstream
+     - git+https://github.com/yijiangh/pybullet_planning.git@dev#egg=pybullet_planning

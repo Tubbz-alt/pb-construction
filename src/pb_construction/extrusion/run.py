@@ -20,7 +20,7 @@ from pb_construction.extrusion.experiment import load_experiment, train_parallel
 from pb_construction.extrusion.motion import compute_motions, display_trajectories
 from pb_construction.extrusion.utils import load_world, get_id_from_element, PrintTrajectory
 from pb_construction.extrusion.parsing import load_extrusion, create_elements_bodies, \
-    enumerate_problems, get_extrusion_path
+    enumerate_problems, get_extrusion_path, EXTRUSION_FILENAMES
 from pb_construction.extrusion.stream import get_print_gen_fn
 from pb_construction.extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS, STIFFNESS_CRITERIA
 from pb_construction.extrusion.validator import verify_plan
@@ -95,7 +95,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     connect(use_gui=viewer)
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
-        obstacles, robot = load_world()
+        obstacles, robot, workspace_bodies = load_world()
         alpha = 1 # 0
         element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=apply_alpha(BLACK, alpha))))
@@ -119,22 +119,26 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             from pb_construction.extrusion.stripstream import plan_sequence
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                        trajectories=trajectories, collisions=not args.cfree,
-                                                       max_time=args.max_time, disable=args.disable, debug=False)
+                                                       max_time=args.max_time, disable=args.disable, 
+                                                       workspace_bodies=workspace_bodies, debug=False)
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                      max_time=args.max_time, collisions=not args.cfree,
                                                      disable=args.disable, stiffness=args.stiffness, 
-                                                     stiffness_criteria=args.stiffness_criteria)
+                                                     stiffness_criteria=args.stiffness_criteria,
+                                                     workspace_bodies=workspace_bodies)
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness, 
-                                                    stiffness_criteria=args.stiffness_criteria)
+                                                    stiffness_criteria=args.stiffness_criteria,
+                                                    workspace_bodies=workspace_bodies)
         elif args.algorithm == 'deadend':
             planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                    max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,
                                                    disable=args.disable, stiffness=args.stiffness, motions=args.motions,
-                                                   stiffness_criteria=args.stiffness_criteria)
+                                                   stiffness_criteria=args.stiffness_criteria,
+                                                   workspace_bodies=workspace_bodies)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -173,7 +177,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     plan_data.update(data)
     del plan_data['sequence']
 
-    result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_results')
+    # result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_results')
+    result_file_dir = "C:/Users/yijiangh/Documents/pb_ws/pychoreo/tests/test_data"
     print('result dir: ', result_file_dir)
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
@@ -220,7 +225,7 @@ def main():
                         help='TBD')
     parser.add_argument('-l', '--load', default=None,
                         help='Analyze an experiment')
-    parser.add_argument('-p', '--problem', default='simple_frame',
+    parser.add_argument('-p', '--problem', default='simple_frame', choices=EXTRUSION_FILENAMES.keys(),
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
                         help='Disables stiffness checking')

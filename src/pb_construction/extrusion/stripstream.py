@@ -14,7 +14,7 @@ from pddlstream.utils import read, get_file_path
 STRIPSTREAM_ALGORITHM = 'stripstream'
 
 def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], **kwargs):
+                   trajectories=[], workspace_bodies=[], **kwargs):
     # TODO: instantiation slowness is due to condition effects
     # Regression works well here because of the fixed goal state
     # TODO: plan for the end-effector first
@@ -91,7 +91,7 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
 
 def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                   trajectories=[], collisions=True, disable=False,
-                  debug=False, max_time=30):
+                  debug=False, max_time=30, workspace_bodies=[]):
     if trajectories is None:
         return None
     # TODO: iterated search using random restarts

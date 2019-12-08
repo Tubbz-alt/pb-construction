@@ -10,7 +10,7 @@ from pb_construction.extrusion.greedy import get_heuristic_fn, Node, add_success
 from pb_construction.extrusion.parsing import load_extrusion
 from pb_construction.extrusion.stream import get_print_gen_fn
 from pb_construction.extrusion.utils import check_connected, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS
+    create_stiffness_checker, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, WORKSPACE_ROBOT_DISABLED_LINK_NAMES
 from pb_construction.extrusion.visualization import color_structure
 from pb_construction.extrusion.visualization import color_structure
 from pb_construction.extrusion.motion import compute_motion
@@ -60,7 +60,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
               heuristic='z', max_time=INF, max_backtrack=INF, 
               revisit=False, ee_only=False, collisions=True, 
               stiffness=True, stiffness_criteria='compliance',
-              motions=True, **kwargs):
+              motions=True, workspace_bodies=[], **kwargs):
     start_time = time.time()
     joints = get_movable_joints(robot)
     initial_conf = get_joint_positions(robot, joints)
@@ -72,11 +72,13 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     #                                max_directions=50, max_attempts=10, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                          precompute_collisions=True, supports=False, bidirectional=True, ee_only=ee_only,
-                                         max_directions=250, max_attempts=1, collisions=collisions, **kwargs)
+                                         max_directions=250, max_attempts=1, collisions=collisions, 
+                                         **kwargs)
     # TODO: could just check kinematics instead of collision
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                         precompute_collisions=True, supports=False, bidirectional=True, ee_only=True,
-                                        max_directions=250, max_attempts=1, collisions=collisions, **kwargs)
+                                        max_directions=250, max_attempts=1, collisions=collisions, 
+                                        **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True, stiffness_criteria=stiffness_criteria)
